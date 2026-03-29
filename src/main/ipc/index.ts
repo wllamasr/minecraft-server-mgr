@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../../shared/constants'
 import * as serverManager from '../services/server-manager'
 import * as consoleManager from '../services/console-manager'
 import * as configManager from '../services/config-manager'
+import * as modManager from '../services/mod-manager'
 import { detectJavaInstallations } from '../services/java-detector'
 import { getLoaderVersions, installModLoader } from '../services/mod-loader-installer'
 import { app } from 'electron'
@@ -71,31 +72,31 @@ export function registerIpcHandlers(): void {
 
   // ─── Mod Manager ────────────────────────────────────────
   ipcMain.handle('mod-manager:search', async (_e, options) => {
-    return await require('../services/mod-manager').searchMods(options)
+    return await modManager.searchMods(options)
   })
 
   ipcMain.handle('mod-manager:get', async (_e, { source, id }) => {
-    return await require('../services/mod-manager').getMod(source, id)
+    return await modManager.getMod(source, id)
   })
 
   ipcMain.handle('mod-manager:get-versions', async (_e, { source, id, gameVersion, loader }) => {
-    return await require('../services/mod-manager').getModVersions(source, id, gameVersion, loader)
+    return await modManager.getModVersions(source, id, gameVersion, loader)
   })
 
   ipcMain.handle('mod-manager:get-installed', async (_e, serverId) => {
-    return await require('../services/mod-manager').getInstalledMods(serverId)
+    return await modManager.getInstalledMods(serverId)
   })
 
   ipcMain.handle('mod-manager:install', async (_e, { serverId, source, projectId, versionId }) => {
-    return await require('../services/mod-manager').installMod(serverId, source, projectId, versionId)
+    return await modManager.installMod(serverId, source, projectId, versionId)
   })
 
   ipcMain.handle('mod-manager:uninstall', async (_e, { serverId, modDbId }) => {
-    return await require('../services/mod-manager').uninstallMod(serverId, modDbId)
+    return await modManager.uninstallMod(serverId, modDbId)
   })
 
   ipcMain.handle('mod-manager:toggle', async (_e, { serverId, modDbId, enable }) => {
-    return await require('../services/mod-manager').toggleMod(serverId, modDbId, enable)
+    return await modManager.toggleMod(serverId, modDbId, enable)
   })
 
   // ─── System ────────────────────────────────────────────
