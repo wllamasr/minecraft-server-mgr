@@ -1,0 +1,8 @@
+{
+  "title": "Console",
+  "placeholder": "Type a command...",
+  "send": "Send",
+  "clear": "Clear",
+  "autoScroll": "Auto-scroll",
+  "noLogs": "No log output yet. Start the server to see logs."
+}

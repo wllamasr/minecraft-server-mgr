@@ -1,0 +1,13 @@
+{
+  "title": "Settings",
+  "general": "General",
+  "java": "Java",
+  "serversDirectory": "Servers Directory",
+  "serversDirectoryDesc": "Base directory where new servers will be created",
+  "browse": "Browse",
+  "curseforgeApiKey": "CurseForge API Key",
+  "curseforgeApiKeyDesc": "Required for browsing and downloading mods from CurseForge",
+  "curseforgeApiKeyPlaceholder": "Enter your API key...",
+  "language": "Language",
+  "saved": "Settings saved"
+}

@@ -1,0 +1,33 @@
+appId: com.minecraft-server-manager.app
+productName: Minecraft Server Manager
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{drizzle.config.ts,postcss.config.cjs}'
+asarUnpack:
+  - resources/**
+  - '**/*.node'
+win:
+  executableName: MinecraftServerManager
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  artifactName: '${name}-Setup-${version}.${ext}'
+publish:
+  provider: github
+  owner: wllamasr
+  repo: minecraft-server-mgr
+extraMetadata:
+  main: ./out/main/index.js

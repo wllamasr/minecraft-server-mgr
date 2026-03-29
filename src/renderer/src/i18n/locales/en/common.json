@@ -1,0 +1,31 @@
+{
+  "appName": "Minecraft Server Manager",
+  "loading": "Loading...",
+  "error": "An error occurred",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "confirm": "Confirm",
+  "actions": "Actions",
+  "search": "Search...",
+  "noResults": "No results found",
+  "nav": {
+    "dashboard": "Dashboard",
+    "servers": "Servers",
+    "mods": "Mods",
+    "settings": "Settings"
+  },
+  "status": {
+    "stopped": "Stopped",
+    "starting": "Starting",
+    "running": "Running",
+    "stopping": "Stopping",
+    "crashed": "Crashed"
+  },
+  "statusBar": {
+    "version": "v{{version}}",
+    "serversRunning": "{{count}} server(s) running",
+    "javaDetected": "Java {{version}} detected",
+    "javaNotFound": "Java not found"
+  }
+}
