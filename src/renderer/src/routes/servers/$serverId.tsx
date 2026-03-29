@@ -7,6 +7,7 @@ import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
 import type { ServerWithStatus, ServerTelemetry } from '@shared/types'
 import { ServerMods } from '../../components/servers/ServerMods'
+import { ServerConsole } from '../../components/servers/ServerConsole'
 import { ServerPropertiesEditor } from '../../components/servers/ServerPropertiesEditor'
 import { useState, useEffect } from 'react'
 
@@ -241,6 +242,8 @@ function ServerDetailPage() {
                 )}
               </Paper>
             )}
+            
+            <ServerConsole serverId={serverId} />
           </Stack>
         </Tabs.Panel>
 
