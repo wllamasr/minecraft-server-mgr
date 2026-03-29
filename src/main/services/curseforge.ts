@@ -73,9 +73,11 @@ interface CFModResponse {
 // ─── Core Request Helper ───────────────────────────────────
 
 async function cfFetch<T>(endpoint: string): Promise<T> {
-  const apiKey = getSetting('curseforge.apiKey')
+  // Use 'curseforgeApiKey' to match the frontend save mechanism
+  const apiKey = getSetting('curseforgeApiKey')
+
   if (!apiKey) {
-    throw new Error('CurseForge API key is not configured.')
+    throw new Error('You must configure a CurseForge API key in the settings before you can browse or install mods from CurseForge.')
   }
 
   const url = `${API_BASE}${endpoint}`
