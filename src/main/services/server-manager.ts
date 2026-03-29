@@ -9,6 +9,7 @@ import { getServerDir, getServersRootDir } from '../utils/paths'
 import { downloadFile } from '../utils/download'
 import { findBestJava } from './java-detector'
 import { attachConsole, detachConsole, sendCommand as consoleSendCommand } from './console-manager'
+import { startTelemetry, stopTelemetry } from './telemetry-manager'
 import log from '../utils/logger'
 import { IPC_EVENTS } from '../../shared/constants'
 import { DEFAULTS } from '../../shared/constants'
@@ -60,6 +61,10 @@ export function getServer(serverId: string): ServerWithStatus | null {
     status: getServerStatus(row.id),
     pid: runningServers.get(row.id)?.process.pid
   }
+}
+
+export function getRunningProcess(serverId: string): ChildProcess | null {
+  return runningServers.get(serverId)?.process || null
 }
 
 export async function createServer(input: CreateServerInput): Promise<ServerInstance> {
@@ -159,12 +164,14 @@ export function startServer(serverId: string): void {
   childProcess.on('spawn', () => {
     running.status = 'running'
     broadcastStatus(serverId, 'running')
+    startTelemetry(serverId)
   })
 
   childProcess.on('exit', (code) => {
     log.info(`[ServerManager] Server "${server.name}" exited with code ${code}`)
     runningServers.delete(serverId)
     detachConsole(serverId)
+    stopTelemetry(serverId)
     broadcastStatus(serverId, code === 0 ? 'stopped' : 'crashed')
   })
 
@@ -172,6 +179,7 @@ export function startServer(serverId: string): void {
     log.error(`[ServerManager] Server "${server.name}" process error:`, err)
     runningServers.delete(serverId)
     detachConsole(serverId)
+    stopTelemetry(serverId)
     broadcastStatus(serverId, 'crashed')
   })
 }

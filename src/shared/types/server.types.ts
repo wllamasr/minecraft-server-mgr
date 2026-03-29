@@ -45,6 +45,7 @@ export interface ServerLogEntry {
   serverId: string
   line: string
   timestamp: number
+  level?: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
 }
 
 export interface ServerMetrics {

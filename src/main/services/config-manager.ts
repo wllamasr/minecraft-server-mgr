@@ -1,8 +1,9 @@
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
+import { existsSync } from 'fs'
 import { join } from 'path'
 import { eq } from 'drizzle-orm'
 import { getDatabase, schema } from '../database/client'
 import log from '../utils/logger'
+import { readProperties, saveProperties } from './properties-parser'
 
 /**
  * Read server.properties as a key-value map.
@@ -15,20 +16,7 @@ export function readServerProperties(serverId: string): Record<string, string> {
     return {}
   }
 
-  const content = readFileSync(propsPath, 'utf-8')
-  const result: Record<string, string> = {}
-
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eqIndex = trimmed.indexOf('=')
-    if (eqIndex === -1) continue
-    const key = trimmed.substring(0, eqIndex).trim()
-    const value = trimmed.substring(eqIndex + 1).trim()
-    result[key] = value
-  }
-
-  return result
+  return readProperties(propsPath)
 }
 
 /**
@@ -38,17 +26,14 @@ export function readServerProperties(serverId: string): Record<string, string> {
 export function writeServerProperties(serverId: string, properties: Record<string, string>): void {
   const server = getServerById(serverId)
   const propsPath = join(server.absolutePath, 'server.properties')
-
-  const lines: string[] = [
-    '#Minecraft server properties',
-    `#Updated by Minecraft Server Manager`
-  ]
-
-  for (const [key, value] of Object.entries(properties)) {
-    lines.push(`${key}=${value}`)
+  
+  if (!existsSync(propsPath)) {
+    // If it doesn't exist, we'll create an empty one first
+    const { writeFileSync } = require('fs')
+    writeFileSync(propsPath, '#Minecraft server properties\n')
   }
 
-  writeFileSync(propsPath, lines.join('\n') + '\n')
+  saveProperties(propsPath, properties)
   log.info(`[ConfigManager] Updated server.properties for ${serverId}`)
 }
 

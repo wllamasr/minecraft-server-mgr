@@ -10,6 +10,16 @@ interface ManagedConsole {
   logBuffer: ServerLogEntry[]
 }
 
+function extractLogLevel(line: string): ServerLogEntry['level'] {
+  const match = line.match(/(?:INFO|WARN|ERROR|DEBUG|FINE|SEVERE)/i)
+  if (!match) return undefined
+  
+  const raw = match[0].toUpperCase()
+  if (raw === 'SEVERE' || raw === 'FATAL') return 'ERROR'
+  if (raw === 'FINE' || raw === 'FINER' || raw === 'FINEST') return 'DEBUG'
+  return raw as ServerLogEntry['level']
+}
+
 const MAX_BUFFER_SIZE = 2000 // Keep last N log lines in memory
 const consoles = new Map<string, ManagedConsole>()
 
@@ -23,11 +33,17 @@ export function attachConsole(serverId: string, childProcess: ChildProcess): voi
     logBuffer: []
   }
 
-  const pushLine = (line: string) => {
+  const pushLine = (line: string, isErrorStream = false) => {
+    let level = extractLogLevel(line)
+    if (isErrorStream && !level) {
+      level = 'ERROR'
+    }
+
     const entry: ServerLogEntry = {
       serverId,
       line,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      level
     }
 
     managed.logBuffer.push(entry)
@@ -45,12 +61,12 @@ export function attachConsole(serverId: string, childProcess: ChildProcess): voi
 
   childProcess.stdout?.on('data', (data: Buffer) => {
     const lines = data.toString().split('\n').filter(Boolean)
-    lines.forEach(pushLine)
+    lines.forEach(l => pushLine(l, false))
   })
 
   childProcess.stderr?.on('data', (data: Buffer) => {
     const lines = data.toString().split('\n').filter(Boolean)
-    lines.forEach((line) => pushLine(`[STDERR] ${line}`))
+    lines.forEach((line) => pushLine(line, true))
   })
 
   consoles.set(serverId, managed)

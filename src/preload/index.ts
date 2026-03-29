@@ -78,11 +78,22 @@ const api = {
 
   windowClose: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.APP_WINDOW_CLOSE),
 
+  onTelemetry: (serverId: string, callback: (data: import('../shared/types/telemetry.types').ServerTelemetry) => void) => {
+    const channel = `server-telemetry:${serverId}`
+    const listener = (_e: unknown, data: import('../shared/types/telemetry.types').ServerTelemetry) => callback(data)
+    ipcRenderer.on(channel, listener)
+    return () => {
+      ipcRenderer.removeListener(channel, listener)
+    }
+  },
+
   // ─── Event listeners (Main → Renderer) ────────────────
   onServerLog: (callback: (entry: ServerLogEntry) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, entry: ServerLogEntry) => callback(entry)
     ipcRenderer.on(IPC_EVENTS.SERVER_LOG, handler)
-    return () => ipcRenderer.removeListener(IPC_EVENTS.SERVER_LOG, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_EVENTS.SERVER_LOG, handler)
+    }
   },
 
   onServerStatusChanged: (callback: (data: { serverId: string; status: string }) => void) => {
