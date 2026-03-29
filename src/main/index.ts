@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
 import { runMigrations } from './database/migrate'
+import { initializeAutoUpdater } from './services/auto-updater'
 import log from './utils/logger'
 
 function createWindow(): void {
@@ -51,6 +52,12 @@ app.whenReady().then(() => {
 
   // Register IPC handlers
   registerIpcHandlers()
+
+  // Start auto-updater
+  // We disable it in dev mode to prevent errors and just let it run in production
+  if (!is.dev) {
+    initializeAutoUpdater()
+  }
 
   // Default open or close DevTools by F12
   app.on('browser-window-created', (_, window) => {

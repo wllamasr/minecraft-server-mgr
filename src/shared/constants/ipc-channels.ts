@@ -32,7 +32,8 @@ export const IPC_CHANNELS = {
   APP_GET_VERSION: 'app:get-version',
   APP_WINDOW_MINIMIZE: 'app:window-minimize',
   APP_WINDOW_MAXIMIZE: 'app:window-maximize',
-  APP_WINDOW_CLOSE: 'app:window-close'
+  APP_WINDOW_CLOSE: 'app:window-close',
+  APP_INSTALL_UPDATE: 'app:install-update'
 } as const
 
 /** IPC Event names (Main → Renderer) */
@@ -40,5 +41,6 @@ export const IPC_EVENTS = {
   SERVER_LOG: 'event:server-log',
   SERVER_STATUS_CHANGED: 'event:server-status-changed',
   SERVER_METRICS: 'event:server-metrics',
-  DOWNLOAD_PROGRESS: 'event:download-progress'
+  DOWNLOAD_PROGRESS: 'event:download-progress',
+  APP_UPDATE_DOWNLOADED: 'event:app-update-downloaded'
 } as const

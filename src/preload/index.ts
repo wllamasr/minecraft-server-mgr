@@ -78,6 +78,8 @@ const api = {
 
   windowClose: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.APP_WINDOW_CLOSE),
 
+  installUpdate: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.APP_INSTALL_UPDATE),
+
   onTelemetry: (serverId: string, callback: (data: import('../shared/types/telemetry.types').ServerTelemetry) => void) => {
     const channel = `server-telemetry:${serverId}`
     const listener = (_e: unknown, data: import('../shared/types/telemetry.types').ServerTelemetry) => callback(data)
@@ -100,6 +102,14 @@ const api = {
     const handler = (_e: Electron.IpcRendererEvent, data: { serverId: string; status: string }) => callback(data)
     ipcRenderer.on(IPC_EVENTS.SERVER_STATUS_CHANGED, handler)
     return () => ipcRenderer.removeListener(IPC_EVENTS.SERVER_STATUS_CHANGED, handler)
+  },
+
+  onUpdateDownloaded: (callback: (version: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, version: string) => callback(version)
+    ipcRenderer.on(IPC_EVENTS.APP_UPDATE_DOWNLOADED, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_EVENTS.APP_UPDATE_DOWNLOADED, handler)
+    }
   }
 }
 
