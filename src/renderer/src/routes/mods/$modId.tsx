@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from '@tanstack/react-router'
 import { Title, Stack, Group, Card, Image, Text, Badge, Button, Loader, Divider, Paper, ScrollArea, Table, ActionIcon, Grid } from '@mantine/core'
 import { IconArrowLeft, IconDownload, IconExternalLink } from '@tabler/icons-react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { notifications } from '@mantine/notifications'
 import ReactMarkdown from 'react-markdown'
@@ -81,9 +81,34 @@ function ModDetailPage() {
     return <Text c="red">Error loading mod: {(error as Error)?.message || 'Unknown error'}</Text>
   }
 
-  // Find required dependencies in the top version (simplified for MVP)
-  // We just collect unique mod IDs that are "required"
-  const topVersionDeps = (versions?.[0]?.dependencies || []).filter(d => d.dependencyType === 'required')
+  // Installed Mods
+  const { data: installedMods } = useQuery({
+    queryKey: ['installed-mods', serverId],
+    queryFn: () => serverId ? window.api.getInstalledMods(serverId) : Promise.resolve([]),
+    enabled: !!serverId
+  })
+
+  // Find required dependencies in the top version
+  const topVersionDeps = (versions?.[0]?.dependencies || []).filter(d => d.dependencyType === 'required' && (d.projectId || d.modId))
+
+  // Determine which dependencies are missing
+  const missingDeps = topVersionDeps.filter(dep => {
+    const depId = String(dep.projectId || dep.modId)
+    if (!installedMods) return true // assume missing if we don't know
+    return !installedMods.some(m => String(m.sourceProjectId) === depId)
+  })
+
+  // Fetch names for missing dependencies
+  const missingDepsQueries = useQueries({
+    queries: missingDeps.map(dep => ({
+      queryKey: ['mod-detail', source, String(dep.projectId || dep.modId)],
+      queryFn: () => window.api.getMod(source, String(dep.projectId || dep.modId)),
+      staleTime: 60 * 1000 * 10 // 10 minutes cache
+    }))
+  })
+
+  const loadedMissingDeps = missingDepsQueries.map(q => q.data).filter(Boolean) as import('@shared/types').UnifiedMod[]
+  const isLoadingMissingDeps = missingDepsQueries.some(q => q.isLoading)
 
   return (
     <Stack gap="lg" h="100%">
@@ -131,14 +156,39 @@ function ModDetailPage() {
       </Group>
 
       {/* Dependencies Warning */}
-      {topVersionDeps.length > 0 && serverId && (
+      {missingDeps.length > 0 && serverId && (
         <Paper p="md" radius="md" bg="var(--mantine-color-yellow-9)" withBorder style={{ borderColor: 'var(--mantine-color-yellow-7)' }}>
           <Text c="var(--mantine-color-yellow-1)" fw={600} size="sm">
-            This mod requires {topVersionDeps.length} dependencies.
+            This mod requires {missingDeps.length} dependencies that are not currently installed.
           </Text>
-          <Text c="var(--mantine-color-yellow-2)" size="xs" mt={4}>
-            Please ensure you search for and install its required dependencies manually.
+          <Text c="var(--mantine-color-yellow-2)" size="xs" mt={4} mb="sm">
+            Please ensure you install the following required dependencies for this mod to work correctly:
           </Text>
+          
+          {isLoadingMissingDeps ? (
+            <Group gap="xs">
+              <Loader size="xs" color="yellow" />
+              <Text size="xs" c="var(--mantine-color-yellow-2)">Loading dependency details...</Text>
+            </Group>
+          ) : (
+            <Group gap="xs">
+              {loadedMissingDeps.map(dep => (
+                <Button 
+                  key={dep.id} 
+                  size="compact-xs" 
+                  variant="light" 
+                  color="yellow"
+                  onClick={() => navigate({ 
+                    to: '/mods/$modId',
+                    params: { modId: dep.id },
+                    search: { source, serverId: serverId }
+                  })}
+                >
+                  {dep.name}
+                </Button>
+              ))}
+            </Group>
+          )}
         </Paper>
       )}
 
