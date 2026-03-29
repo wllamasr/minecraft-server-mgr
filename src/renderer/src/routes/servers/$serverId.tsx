@@ -137,23 +137,9 @@ function ServerDetailPage() {
             <ActionIcon
               variant="light"
               size="lg"
-              component={Link}
-              to="/console/$serverId"
-              params={{ serverId }}
+              onClick={() => navigate({ to: '/console/$serverId', params: { serverId } })}
             >
               <IconTerminal2 size={18} />
-            </ActionIcon>
-          </Tooltip>
-
-          <Tooltip label={t('servers:config')}>
-            <ActionIcon
-              variant="light"
-              size="lg"
-              component={Link}
-              to="/config/$serverId"
-              params={{ serverId }}
-            >
-              <IconSettings size={18} />
             </ActionIcon>
           </Tooltip>
 

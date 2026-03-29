@@ -61,7 +61,7 @@ export function ServerMods({ server }: ServerModsProps) {
         <Title order={3}>Installed Mods</Title>
         <Button
           component={Link}
-          to="/mods"
+          to="/mods/"
           search={{ serverId: server.id }}
           leftSection={<IconPackage size={18} />}
           disabled={isVanilla}
