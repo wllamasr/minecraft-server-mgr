@@ -69,18 +69,6 @@ function ModDetailPage() {
     }
   })
 
-  if (loadingMod) {
-    return (
-      <Group justify="center" h="100%" align="center">
-        <Loader size="xl" />
-      </Group>
-    )
-  }
-
-  if (isError || !mod) {
-    return <Text c="red">Error loading mod: {(error as Error)?.message || 'Unknown error'}</Text>
-  }
-
   // Installed Mods
   const { data: installedMods } = useQuery({
     queryKey: ['installed-mods', serverId],
@@ -109,6 +97,18 @@ function ModDetailPage() {
 
   const loadedMissingDeps = missingDepsQueries.map(q => q.data).filter(Boolean) as import('@shared/types').UnifiedMod[]
   const isLoadingMissingDeps = missingDepsQueries.some(q => q.isLoading)
+
+  if (loadingMod) {
+    return (
+      <Group justify="center" h="100%" align="center">
+        <Loader size="xl" />
+      </Group>
+    )
+  }
+
+  if (isError || !mod) {
+    return <Text c="red">Error loading mod: {(error as Error)?.message || 'Unknown error'}</Text>
+  }
 
   return (
     <Stack gap="lg" h="100%">
