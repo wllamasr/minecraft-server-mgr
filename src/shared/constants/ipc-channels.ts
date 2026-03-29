@@ -24,6 +24,10 @@ export const IPC_CHANNELS = {
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
 
+  // Mod Loaders
+  MODLOADER_GET_VERSIONS: 'modloader:get-versions',
+  MODLOADER_INSTALL: 'modloader:install',
+
   // App
   APP_GET_VERSION: 'app:get-version',
   APP_WINDOW_MINIMIZE: 'app:window-minimize',

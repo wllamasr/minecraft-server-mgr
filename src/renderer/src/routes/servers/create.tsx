@@ -1,10 +1,10 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Title, TextInput, Select, NumberInput, Button, Stack, Paper, Group, Text } from '@mantine/core'
+import { Title, TextInput, Select, NumberInput, Button, Stack, Paper, Group, Text, Loader, Badge } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
-import type { CreateServerInput } from '@shared/types'
+import type { CreateServerInput, ModLoaderType } from '@shared/types'
 
 export const Route = createFileRoute('/servers/create')({
   component: CreateServerPage
@@ -20,6 +20,14 @@ const MC_VERSIONS = [
   '1.12.2'
 ]
 
+const MOD_LOADER_OPTIONS = [
+  { value: '', label: 'Vanilla (no mods)' },
+  { value: 'fabric', label: 'Fabric' },
+  { value: 'forge', label: 'Forge' },
+  { value: 'neoforge', label: 'NeoForge' },
+  { value: 'quilt', label: 'Quilt' }
+]
+
 function CreateServerPage() {
   const { t } = useTranslation(['servers', 'common'])
   const navigate = useNavigate()
@@ -31,6 +39,16 @@ function CreateServerPage() {
     port: 25565,
     minRam: '1G',
     maxRam: '2G'
+  })
+
+  const [selectedLoader, setSelectedLoader] = useState<string>('')
+  const [selectedLoaderVersion, setSelectedLoaderVersion] = useState<string>('')
+
+  // Fetch mod loader versions when a loader + MC version is selected
+  const { data: loaderVersions, isLoading: loadingVersions } = useQuery({
+    queryKey: ['loaderVersions', selectedLoader, form.minecraftVersion],
+    queryFn: () => window.api.getModLoaderVersions(selectedLoader as ModLoaderType, form.minecraftVersion),
+    enabled: !!selectedLoader && !!form.minecraftVersion
   })
 
   const createMutation = useMutation({
@@ -53,10 +71,22 @@ function CreateServerPage() {
     }
   })
 
+  const handleLoaderChange = (val: string | null) => {
+    setSelectedLoader(val || '')
+    setSelectedLoaderVersion('')
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.name.trim() || !form.minecraftVersion) return
-    createMutation.mutate(form)
+
+    const input: CreateServerInput = {
+      ...form,
+      modLoader: selectedLoader ? (selectedLoader as ModLoaderType) : undefined,
+      modLoaderVersion: selectedLoaderVersion || undefined
+    }
+
+    createMutation.mutate(input)
   }
 
   return (
@@ -83,10 +113,44 @@ function CreateServerPage() {
               label={t('servers:minecraftVersion')}
               data={MC_VERSIONS}
               value={form.minecraftVersion}
-              onChange={(val) => setForm({ ...form, minecraftVersion: val || '1.21.4' })}
+              onChange={(val) => {
+                setForm({ ...form, minecraftVersion: val || '1.21.4' })
+                setSelectedLoaderVersion('') // Reset loader version on MC change
+              }}
               searchable
               required
             />
+
+            {/* Mod Loader Selection */}
+            <Select
+              label={t('servers:modLoader')}
+              data={MOD_LOADER_OPTIONS}
+              value={selectedLoader}
+              onChange={handleLoaderChange}
+              clearable
+            />
+
+            {/* Mod Loader Version */}
+            {selectedLoader && (
+              <Select
+                label={`${MOD_LOADER_OPTIONS.find(o => o.value === selectedLoader)?.label} Version`}
+                placeholder={loadingVersions ? 'Loading versions...' : 'Select version'}
+                data={(loaderVersions || []).map((v) => ({
+                  value: v.version,
+                  label: v.version + (v.stable ? ' (recommended)' : '')
+                }))}
+                value={selectedLoaderVersion}
+                onChange={(val) => setSelectedLoaderVersion(val || '')}
+                searchable
+                rightSection={loadingVersions ? <Loader size="xs" /> : undefined}
+                disabled={loadingVersions || !loaderVersions?.length}
+                description={
+                  loaderVersions?.length === 0 && !loadingVersions
+                    ? `No ${selectedLoader} versions available for MC ${form.minecraftVersion}`
+                    : undefined
+                }
+              />
+            )}
 
             <NumberInput
               label={t('servers:port')}
@@ -120,6 +184,7 @@ function CreateServerPage() {
                 loading={createMutation.isPending}
                 variant="gradient"
                 gradient={{ from: 'green', to: 'teal', deg: 135 }}
+                disabled={selectedLoader ? !selectedLoaderVersion : false}
               >
                 {t('servers:createServer')}
               </Button>
