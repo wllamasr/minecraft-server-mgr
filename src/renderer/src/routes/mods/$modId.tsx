@@ -98,8 +98,9 @@ function ModDetailPage() {
           </ActionIcon>
           <Image
             src={mod.iconUrl || 'https://placehold.co/64x64?text=Mod'}
-            width={48}
-            height={48}
+            w={48}
+            h={48}
+            fit="contain"
             radius="md"
           />
           <Stack gap={0}>

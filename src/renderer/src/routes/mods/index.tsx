@@ -60,8 +60,8 @@ function ModsPage() {
 
   // Check CurseForge Key
   const { data: cfApiKey } = useQuery({
-    queryKey: ['settings', 'curseforge.apiKey'],
-    queryFn: () => window.api.getSetting('curseforge.apiKey')
+    queryKey: ['settings', 'curseforgeApiKey'],
+    queryFn: () => window.api.getSetting('curseforgeApiKey')
   })
 
   // Only run the search query if it's Modrinth OR we have a CF API key
@@ -183,8 +183,9 @@ function ModsPage() {
                     <Group wrap="nowrap" align="flex-start">
                       <Image
                         src={mod.iconUrl || 'https://placehold.co/64x64?text=Mod'}
-                        width={64}
-                        height={64}
+                        w={64}
+                        h={64}
+                        fit="contain"
                         radius="md"
                         fallbackSrc="https://placehold.co/64x64?text=Mod"
                         style={{ flexShrink: 0 }}

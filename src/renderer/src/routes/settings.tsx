@@ -4,6 +4,7 @@ import { IconFolder } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
 import { notifications } from '@mantine/notifications'
+import { useQueryClient } from '@tanstack/react-query'
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage
@@ -11,6 +12,7 @@ export const Route = createFileRoute('/settings')({
 
 function SettingsPage() {
   const { t } = useTranslation('settings')
+  const queryClient = useQueryClient()
 
   const [serversDir, setServersDir] = useState('')
   const [curseforgeKey, setCurseforgeKey] = useState('')
@@ -30,12 +32,16 @@ function SettingsPage() {
   }
 
   const handleSave = async () => {
-    if (serversDir) {
-      await window.api.setSetting('serversDirectory', serversDir)
+    if (serversDir && serversDir.trim() !== '') {
+      await window.api.setSetting('serversDirectory', serversDir.trim())
     }
-    if (curseforgeKey) {
-      await window.api.setSetting('curseforgeApiKey', curseforgeKey)
+    if (curseforgeKey && curseforgeKey.trim() !== '') {
+      await window.api.setSetting('curseforgeApiKey', curseforgeKey.trim())
     }
+    
+    // Invalidate caches so other views know it changed
+    await queryClient.invalidateQueries({ queryKey: ['settings'] })
+
     notifications.show({
       message: t('saved'),
       color: 'green'
