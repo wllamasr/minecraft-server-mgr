@@ -30,8 +30,13 @@ export function ServerConsole({ serverId }: ServerConsoleProps) {
     refetchInterval: 5000
   })
 
-  // Listen for server log events
+  // Fetch historical logs and listen for new ones
   useEffect(() => {
+    // Load historical logs
+    window.api.getServerLogs(serverId).then((histLogs) => {
+      setLogs(histLogs || [])
+    })
+
     const unsubscribe = window.api.onServerLog((entry) => {
       if (entry.serverId === serverId) {
         setLogs((prev) => [...prev.slice(-1999), entry])
@@ -57,12 +62,12 @@ export function ServerConsole({ serverId }: ServerConsoleProps) {
     })
   }, [logs, filterInfo, filterWarn, filterError, filterDebug, searchQuery])
 
-  // Auto-scroll
+  // Auto-scroll only when new logs arrive, NOT when filters change
   useEffect(() => {
     if (autoScroll && viewportRef.current) {
       viewportRef.current.scrollTop = viewportRef.current.scrollHeight
     }
-  }, [filteredLogs, autoScroll])
+  }, [logs, autoScroll])
 
   const handleSend = () => {
     if (!command.trim()) return
@@ -119,9 +124,10 @@ export function ServerConsole({ serverId }: ServerConsoleProps) {
       </Box>
 
       <ScrollArea
-        style={{ flex: 1, minHeight: 400, maxHeight: 600 }}
+        h={400}
         viewportRef={viewportRef}
         scrollbarSize={8}
+        type="always"
       >
         <Box p="md" className="console-output" ref={scrollRef}>
           {filteredLogs.length === 0 ? (

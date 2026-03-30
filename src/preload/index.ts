@@ -21,6 +21,9 @@ const api = {
   sendCommand: (serverId: string, command: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONSOLE_SEND_COMMAND, { serverId, command }),
 
+  getServerLogs: (serverId: string): Promise<ServerLogEntry[]> =>
+    ipcRenderer.invoke('console:get-logs', serverId),
+
   // ─── Config ───────────────────────────────────────────
   readServerProperties: (serverId: string): Promise<Record<string, string>> =>
     ipcRenderer.invoke(IPC_CHANNELS.CONFIG_READ_SERVER_PROPERTIES, serverId),

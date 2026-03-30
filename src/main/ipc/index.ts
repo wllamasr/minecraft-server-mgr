@@ -43,6 +43,10 @@ export function registerIpcHandlers(): void {
     return consoleManager.sendCommand(serverId, command)
   })
 
+  ipcMain.handle('console:get-logs', (_e, serverId: string) => {
+    return consoleManager.getLogBuffer(serverId)
+  })
+
   // ─── Config ────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.CONFIG_READ_SERVER_PROPERTIES, (_e, serverId: string) => {
     return configManager.readServerProperties(serverId)
