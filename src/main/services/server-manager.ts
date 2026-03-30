@@ -10,6 +10,7 @@ import { downloadFile } from '../utils/download'
 import { findBestJava } from './java-detector'
 import { attachConsole, detachConsole, sendCommand as consoleSendCommand } from './console-manager'
 import { startTelemetry, stopTelemetry } from './telemetry-manager'
+import { installModLoader } from './mod-loader-installer'
 import log from '../utils/logger'
 import { IPC_EVENTS } from '../../shared/constants'
 import { DEFAULTS } from '../../shared/constants'
@@ -91,6 +92,12 @@ export async function createServer(input: CreateServerInput): Promise<ServerInst
   // Accept EULA
   writeFileSync(join(serverDir, 'eula.txt'), 'eula=true\n')
 
+  // Install Mod Loader if specified
+  if (input.modLoader && input.modLoaderVersion) {
+    log.info(`[ServerManager] Installing mod loader: ${input.modLoader} ${input.modLoaderVersion}`)
+    await installModLoader(input.modLoader, input.modLoaderVersion, input.minecraftVersion, serverDir)
+  }
+
   const now = new Date().toISOString()
   const server: typeof schema.servers.$inferInsert = {
     id,
@@ -137,9 +144,8 @@ export function startServer(serverId: string): void {
     }
   }
 
-  log.info(`[ServerManager] Starting server "${server.name}" with Java: ${javaPath}`)
-
-  const args = [
+  let command = javaPath
+  let args = [
     `-Xms${server.minRam}`,
     `-Xmx${server.maxRam}`,
     '-jar',
@@ -147,8 +153,53 @@ export function startServer(serverId: string): void {
     'nogui'
   ]
 
-  const childProcess = spawn(javaPath, args, {
+  // Specialized startup logic for mod loaders
+  if (server.modLoader === 'forge' || server.modLoader === 'neoforge') {
+    const isWin = process.platform === 'win32'
+    const scriptName = isWin ? 'run.bat' : 'run.sh'
+    const scriptPath = join(serverDir, scriptName)
+
+    if (existsSync(scriptPath)) {
+      log.info(`[ServerManager] Detected ${server.modLoader} script: ${scriptName}`)
+      
+      // Update user_jvm_args.txt for RAM
+      const jvmArgsPath = join(serverDir, 'user_jvm_args.txt')
+      const ramArgs = `-Xms${server.minRam}\n-Xmx${server.maxRam}\n`
+      writeFileSync(jvmArgsPath, ramArgs)
+      
+      if (isWin) {
+        command = 'cmd.exe'
+        args = ['/c', scriptName, 'nogui']
+      } else {
+        command = 'sh'
+        args = [scriptName, 'nogui']
+      }
+    }
+  } else if (server.modLoader === 'fabric' || server.modLoader === 'quilt') {
+    const loaderJar = server.modLoader === 'fabric' ? 'fabric-server-launch.jar' : 'quilt-server-launch.jar'
+    if (existsSync(join(serverDir, loaderJar))) {
+      args = [
+        `-Xms${server.minRam}`, 
+        `-Xmx${server.maxRam}`, 
+        '-jar', 
+        loaderJar, 
+        'nogui'
+      ]
+    }
+  }
+
+  const env = { ...process.env }
+  if (javaPath !== 'java') {
+     const javaDir = require('path').dirname(javaPath)
+     const pathKey = process.platform === 'win32' ? 'Path' : 'PATH'
+     env[pathKey] = `${javaDir}${require('path').delimiter}${env[pathKey]}`
+  }
+
+  log.info(`[ServerManager] Starting server "${server.name}" with command: ${command} ${args.join(' ')}`)
+
+  const childProcess = spawn(command, args, {
     cwd: serverDir,
+    env,
     stdio: ['pipe', 'pipe', 'pipe']
   })
 
