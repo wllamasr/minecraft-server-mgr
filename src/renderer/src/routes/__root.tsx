@@ -50,6 +50,7 @@ function RootLayout() {
             flex: 1,
             overflow: 'auto',
             padding: 'var(--mantine-spacing-lg)',
+            paddingTop: 'calc(var(--titlebar-height) + var(--mantine-spacing-lg))',
             backgroundColor: 'var(--mantine-color-dark-7)'
           }}
         >
