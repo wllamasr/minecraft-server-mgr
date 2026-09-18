@@ -9,49 +9,29 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ServersIndexRouteImport } from './routes/servers/index'
-import { Route as ModsIndexRouteImport } from './routes/mods/index'
-import { Route as ServersCreateRouteImport } from './routes/servers/create'
-import { Route as ServersServerIdRouteImport } from './routes/servers/$serverId'
-import { Route as ModsModIdRouteImport } from './routes/mods/$modId'
-import { Route as ConsoleServerIdRouteImport } from './routes/console/$serverId'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ConfigServerIdRouteImport } from './routes/config/$serverId'
+import { Route as ConsoleServerIdRouteImport } from './routes/console/$serverId'
+import { Route as ModsIndexRouteImport } from './routes/mods/index'
+import { Route as ModsModIdRouteImport } from './routes/mods/$modId'
+import { Route as ServersIndexRouteImport } from './routes/servers/index'
+import { Route as ServersServerIdRouteImport } from './routes/servers/$serverId'
+import { Route as ServersCreateRouteImport } from './routes/servers/create'
 
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ServersIndexRoute = ServersIndexRouteImport.update({
-  id: '/servers/',
-  path: '/servers/',
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ModsIndexRoute = ModsIndexRouteImport.update({
-  id: '/mods/',
-  path: '/mods/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ServersCreateRoute = ServersCreateRouteImport.update({
-  id: '/servers/create',
-  path: '/servers/create',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ServersServerIdRoute = ServersServerIdRouteImport.update({
-  id: '/servers/$serverId',
-  path: '/servers/$serverId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ModsModIdRoute = ModsModIdRouteImport.update({
-  id: '/mods/$modId',
-  path: '/mods/$modId',
+const ConfigServerIdRoute = ConfigServerIdRouteImport.update({
+  id: '/config/$serverId',
+  path: '/config/$serverId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConsoleServerIdRoute = ConsoleServerIdRouteImport.update({
@@ -59,9 +39,29 @@ const ConsoleServerIdRoute = ConsoleServerIdRouteImport.update({
   path: '/console/$serverId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConfigServerIdRoute = ConfigServerIdRouteImport.update({
-  id: '/config/$serverId',
-  path: '/config/$serverId',
+const ModsIndexRoute = ModsIndexRouteImport.update({
+  id: '/mods/',
+  path: '/mods/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ModsModIdRoute = ModsModIdRouteImport.update({
+  id: '/mods/$modId',
+  path: '/mods/$modId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServersIndexRoute = ServersIndexRouteImport.update({
+  id: '/servers/',
+  path: '/servers/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServersServerIdRoute = ServersServerIdRouteImport.update({
+  id: '/servers/$serverId',
+  path: '/servers/$serverId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServersCreateRoute = ServersCreateRouteImport.update({
+  id: '/servers/create',
+  path: '/servers/create',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -149,13 +149,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -163,39 +156,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/servers/': {
-      id: '/servers/'
-      path: '/servers'
-      fullPath: '/servers/'
-      preLoaderRoute: typeof ServersIndexRouteImport
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/mods/': {
-      id: '/mods/'
-      path: '/mods'
-      fullPath: '/mods/'
-      preLoaderRoute: typeof ModsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/servers/create': {
-      id: '/servers/create'
-      path: '/servers/create'
-      fullPath: '/servers/create'
-      preLoaderRoute: typeof ServersCreateRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/servers/$serverId': {
-      id: '/servers/$serverId'
-      path: '/servers/$serverId'
-      fullPath: '/servers/$serverId'
-      preLoaderRoute: typeof ServersServerIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/mods/$modId': {
-      id: '/mods/$modId'
-      path: '/mods/$modId'
-      fullPath: '/mods/$modId'
-      preLoaderRoute: typeof ModsModIdRouteImport
+    '/config/$serverId': {
+      id: '/config/$serverId'
+      path: '/config/$serverId'
+      fullPath: '/config/$serverId'
+      preLoaderRoute: typeof ConfigServerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/console/$serverId': {
@@ -205,11 +177,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsoleServerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/config/$serverId': {
-      id: '/config/$serverId'
-      path: '/config/$serverId'
-      fullPath: '/config/$serverId'
-      preLoaderRoute: typeof ConfigServerIdRouteImport
+    '/mods/': {
+      id: '/mods/'
+      path: '/mods'
+      fullPath: '/mods/'
+      preLoaderRoute: typeof ModsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mods/$modId': {
+      id: '/mods/$modId'
+      path: '/mods/$modId'
+      fullPath: '/mods/$modId'
+      preLoaderRoute: typeof ModsModIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/servers/': {
+      id: '/servers/'
+      path: '/servers'
+      fullPath: '/servers/'
+      preLoaderRoute: typeof ServersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/servers/$serverId': {
+      id: '/servers/$serverId'
+      path: '/servers/$serverId'
+      fullPath: '/servers/$serverId'
+      preLoaderRoute: typeof ServersServerIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/servers/create': {
+      id: '/servers/create'
+      path: '/servers/create'
+      fullPath: '/servers/create'
+      preLoaderRoute: typeof ServersCreateRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
