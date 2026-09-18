@@ -72,7 +72,11 @@ function CreateServerPage() {
     mutationFn: (input: CreateServerInput) => window.api.createServer(input),
     onSuccess: (server) => {
       queryClient.invalidateQueries({ queryKey: ['servers'] })
-      notifications.show({ title: 'Success', message: t('servers:serverCreated', { name: server.name }), color: 'green' })
+      notifications.show({
+        title: 'Provisioning started',
+        message: `Deploying "${server.name}" — follow the live progress in the console.`,
+        color: 'blue'
+      })
       navigate({ to: '/servers/$serverId', params: { serverId: server.id } })
     },
     onError: (err: Error) => {

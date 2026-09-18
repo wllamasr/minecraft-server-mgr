@@ -20,7 +20,9 @@
     "starting": "Starting",
     "running": "Running",
     "stopping": "Stopping",
-    "crashed": "Crashed"
+    "crashed": "Crashed",
+    "provisioning": "Provisioning",
+    "error": "Error"
   },
   "statusBar": {
     "version": "v{{version}}",

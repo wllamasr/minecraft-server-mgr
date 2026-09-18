@@ -8,12 +8,13 @@ import { getDatabase, schema } from '../database/client'
 import { getServerDir, getServersRootDir } from '../utils/paths'
 import { downloadFile } from '../utils/download'
 import { findBestJava } from './java-detector'
-import { attachConsole, detachConsole, sendCommand as consoleSendCommand } from './console-manager'
+import { attachConsole, detachConsole, sendCommand as consoleSendCommand, pushLog } from './console-manager'
 import { startTelemetry, stopTelemetry } from './telemetry-manager'
 import { installModLoader } from './mod-loader-installer'
 import log from '../utils/logger'
 import { IPC_EVENTS } from '../../shared/constants'
 import { DEFAULTS } from '../../shared/constants'
+import { formatProgress } from '../../shared/utils/format'
 import type { ServerInstance, ServerWithStatus, ServerStatus, CreateServerInput } from '../../shared/types'
 
 // ─── In-memory process tracking ────────────────────────────
@@ -23,6 +24,11 @@ interface RunningServer {
 }
 
 const runningServers = new Map<string, RunningServer>()
+
+// Servers currently being provisioned (jar download, mod-loader install) or
+// that failed to provision. Tracked in memory so status is reflected in the UI
+// without adding a column to the schema.
+const provisioningServers = new Map<string, 'provisioning' | 'error'>()
 
 // ─── Mojang version manifest ───────────────────────────────
 const VERSION_MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json'
@@ -68,7 +74,16 @@ export function getRunningProcess(serverId: string): ChildProcess | null {
   return runningServers.get(serverId)?.process || null
 }
 
-export async function createServer(input: CreateServerInput): Promise<ServerInstance> {
+/**
+ * Register a new server and kick off provisioning in the background.
+ *
+ * The database row is created immediately and the server is returned right
+ * away in a `provisioning` state; the heavy work (downloading the server jar
+ * and installing the mod loader) runs asynchronously and streams progress to
+ * the server's console via {@link pushLog}. Callers should navigate to the
+ * server and watch the console rather than awaiting completion.
+ */
+export function createServer(input: CreateServerInput): ServerInstance {
   const db = getDatabase()
   const id = uuid()
   const serverDir = getServerDir(input.name)
@@ -78,25 +93,7 @@ export async function createServer(input: CreateServerInput): Promise<ServerInst
   }
 
   mkdirSync(serverDir, { recursive: true })
-
   log.info(`[ServerManager] Creating server "${input.name}" at ${serverDir}`)
-
-  // Download the vanilla server jar
-  const serverJarPath = join(serverDir, 'server.jar')
-  await downloadVanillaServer(input.minecraftVersion, serverJarPath)
-
-  // Generate server.properties
-  const properties = generateDefaultProperties(input)
-  writeFileSync(join(serverDir, 'server.properties'), properties)
-
-  // Accept EULA
-  writeFileSync(join(serverDir, 'eula.txt'), 'eula=true\n')
-
-  // Install Mod Loader if specified
-  if (input.modLoader && input.modLoaderVersion) {
-    log.info(`[ServerManager] Installing mod loader: ${input.modLoader} ${input.modLoaderVersion}`)
-    await installModLoader(input.modLoader, input.modLoaderVersion, input.minecraftVersion, serverDir)
-  }
 
   const now = new Date().toISOString()
   const server: typeof schema.servers.$inferInsert = {
@@ -116,14 +113,71 @@ export async function createServer(input: CreateServerInput): Promise<ServerInst
   }
 
   db.insert(schema.servers).values(server).run()
-  log.info(`[ServerManager] Server "${input.name}" created with ID ${id}`)
+
+  provisioningServers.set(id, 'provisioning')
+  broadcastStatus(id, 'provisioning')
+
+  // Fire-and-forget; progress is streamed to the console and status events.
+  void provisionServer(id, input, serverDir)
 
   return server as ServerInstance
+}
+
+/**
+ * Background provisioning pipeline for a freshly created server.
+ */
+async function provisionServer(
+  serverId: string,
+  input: CreateServerInput,
+  serverDir: string
+): Promise<void> {
+  try {
+    pushLog(serverId, `Provisioning server "${input.name}"...`, 'INFO')
+
+    // 1. Download the vanilla server jar (progress is streamed, throttled to
+    //    every 10% so the console is not flooded with per-chunk updates).
+    pushLog(serverId, `Downloading Minecraft ${input.minecraftVersion} server jar...`, 'INFO')
+    const serverJarPath = join(serverDir, 'server.jar')
+    let lastLoggedStep = -1
+    await downloadVanillaServer(input.minecraftVersion, serverJarPath, (transferred, total) => {
+      const step = total > 0 ? Math.floor((transferred / total) * 10) : lastLoggedStep + 1
+      if (step > lastLoggedStep) {
+        lastLoggedStep = step
+        pushLog(serverId, `  server.jar  ${formatProgress(transferred, total)}`, 'INFO')
+      }
+    })
+
+    // 2. Generate server.properties and accept the EULA.
+    pushLog(serverId, 'Writing server.properties and accepting the EULA...', 'INFO')
+    writeFileSync(join(serverDir, 'server.properties'), generateDefaultProperties(input))
+    writeFileSync(join(serverDir, 'eula.txt'), 'eula=true\n')
+
+    // 3. Install the mod loader, if any.
+    if (input.modLoader && input.modLoaderVersion) {
+      pushLog(serverId, `Installing ${input.modLoader} ${input.modLoaderVersion}...`, 'INFO')
+      await installModLoader(input.modLoader, input.modLoaderVersion, input.minecraftVersion, serverDir)
+    }
+
+    provisioningServers.delete(serverId)
+    pushLog(serverId, '✔ Provisioning complete — the server is ready to start.', 'INFO')
+    broadcastStatus(serverId, 'stopped')
+    log.info(`[ServerManager] Server "${input.name}" (${serverId}) provisioned`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    provisioningServers.set(serverId, 'error')
+    pushLog(serverId, `✖ Provisioning failed: ${message}`, 'ERROR')
+    broadcastStatus(serverId, 'error')
+    log.error(`[ServerManager] Provisioning failed for ${serverId}:`, err)
+  }
 }
 
 export function startServer(serverId: string): void {
   if (runningServers.has(serverId)) {
     throw new Error('Server is already running')
+  }
+
+  if (provisioningServers.get(serverId) === 'provisioning') {
+    throw new Error('Server is still being provisioned')
   }
 
   const db = getDatabase()
@@ -268,6 +322,8 @@ export async function deleteServer(serverId: string): Promise<void> {
     await stopServer(serverId)
   }
 
+  provisioningServers.delete(serverId)
+
   const db = getDatabase()
   const server = db.select().from(schema.servers).where(eq(schema.servers.id, serverId)).get()
   if (!server) throw new Error(`Server not found: ${serverId}`)
@@ -289,7 +345,13 @@ export async function deleteServer(serverId: string): Promise<void> {
 // ─── Internal helpers ──────────────────────────────────────
 
 function getServerStatus(serverId: string): ServerStatus {
-  return runningServers.get(serverId)?.status || 'stopped'
+  const running = runningServers.get(serverId)
+  if (running) return running.status
+
+  const provisioning = provisioningServers.get(serverId)
+  if (provisioning) return provisioning
+
+  return 'stopped'
 }
 
 function broadcastStatus(serverId: string, status: ServerStatus): void {
@@ -300,7 +362,11 @@ function broadcastStatus(serverId: string, status: ServerStatus): void {
   })
 }
 
-async function downloadVanillaServer(mcVersion: string, destPath: string): Promise<void> {
+async function downloadVanillaServer(
+  mcVersion: string,
+  destPath: string,
+  onProgress?: (transferred: number, total: number) => void
+): Promise<void> {
   log.info(`[ServerManager] Downloading vanilla server jar for MC ${mcVersion}`)
 
   // Fetch version manifest
@@ -319,7 +385,7 @@ async function downloadVanillaServer(mcVersion: string, destPath: string): Promi
     throw new Error(`No server download available for MC ${mcVersion}`)
   }
 
-  await downloadFile(serverDownload.url, destPath)
+  await downloadFile(serverDownload.url, destPath, (p) => onProgress?.(p.transferred, p.total))
 }
 
 function fetchJson(url: string): Promise<unknown> {

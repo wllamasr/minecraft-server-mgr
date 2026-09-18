@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { Title, Stack, Paper, Group, Text, Badge, Button, ActionIcon, Tooltip, Tabs, RingProgress } from '@mantine/core'
+import { Title, Stack, Paper, Group, Text, Badge, Button, ActionIcon, Tooltip, Tabs, RingProgress, Loader } from '@mantine/core'
 import { IconPlayerPlay, IconPlayerStop, IconTrash, IconTerminal2, IconSettings, IconPackage } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -86,7 +86,15 @@ function ServerDetailPage() {
   }
 
   const isRunning = server.status === 'running'
-  const isBusy = server.status === 'starting' || server.status === 'stopping'
+  const isProvisioning = server.status === 'provisioning'
+  const isBusy = server.status === 'starting' || server.status === 'stopping' || isProvisioning
+  const statusColor = isRunning
+    ? 'green'
+    : server.status === 'crashed' || server.status === 'error'
+      ? 'red'
+      : isProvisioning
+        ? 'blue'
+        : 'gray'
   const memoryGb = telemetry ? (telemetry.memory / 1024 / 1024 / 1024).toFixed(2) : '0.00'
   const maxMemGb = parseInt(server.maxRam.replace(/\D/g, ''), 10) || 2
 
@@ -96,11 +104,7 @@ function ServerDetailPage() {
         <Stack gap={4}>
           <Title order={2}>{server.name}</Title>
           <Group gap="sm">
-            <Badge
-              size="lg"
-              color={isRunning ? 'green' : server.status === 'crashed' ? 'red' : 'gray'}
-              variant="dot"
-            >
+            <Badge size="lg" color={statusColor} variant="dot">
               {t(`common:status.${server.status}`)}
             </Badge>
             <Text size="sm" c="dimmed">
@@ -127,7 +131,7 @@ function ServerDetailPage() {
               variant="light"
               leftSection={<IconPlayerPlay size={18} />}
               onClick={() => startMutation.mutate()}
-              loading={startMutation.isPending}
+              loading={startMutation.isPending || isProvisioning}
               disabled={isBusy}
             >
               {t('servers:start')}
@@ -243,6 +247,29 @@ function ServerDetailPage() {
               </Paper>
             )}
             
+            {(isProvisioning || server.status === 'error') && (
+              <Paper
+                p="md"
+                radius="md"
+                withBorder
+                style={{
+                  borderColor:
+                    server.status === 'error'
+                      ? 'var(--mantine-color-red-9)'
+                      : 'var(--mantine-color-blue-9)'
+                }}
+              >
+                <Group gap="sm">
+                  {isProvisioning && <Loader size="sm" color="blue" />}
+                  <Text size="sm" c={server.status === 'error' ? 'red' : 'blue'}>
+                    {isProvisioning
+                      ? 'Provisioning server — downloading files and installing the engine. Watch the console below for live progress.'
+                      : 'Provisioning failed. Check the console below, then delete and recreate the server.'}
+                  </Text>
+                </Group>
+              </Paper>
+            )}
+
             <ServerConsole serverId={serverId} />
           </Stack>
         </Tabs.Panel>

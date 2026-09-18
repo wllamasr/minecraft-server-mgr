@@ -1,7 +1,14 @@
 import type { ModLoaderType } from '../constants/mod-loaders'
 export type { ModLoaderType }
 
-export type ServerStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed'
+export type ServerStatus =
+  | 'stopped'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+  | 'crashed'
+  | 'provisioning'
+  | 'error'
 
 export interface ServerInstance {
   id: string

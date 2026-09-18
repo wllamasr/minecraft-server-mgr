@@ -6,8 +6,22 @@ import type { ServerLogEntry } from '../../shared/types'
 
 interface ManagedConsole {
   serverId: string
-  process: ChildProcess
+  process?: ChildProcess
   logBuffer: ServerLogEntry[]
+}
+
+/** Append an entry to a server's buffer and broadcast it to every window. */
+function record(managed: ManagedConsole, entry: ServerLogEntry): void {
+  managed.logBuffer.push(entry)
+  if (managed.logBuffer.length > MAX_BUFFER_SIZE) {
+    managed.logBuffer.shift()
+  }
+
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC_EVENTS.SERVER_LOG, entry)
+    }
+  })
 }
 
 function extractLogLevel(line: string): ServerLogEntry['level'] {
@@ -39,23 +53,11 @@ export function attachConsole(serverId: string, childProcess: ChildProcess): voi
       level = 'ERROR'
     }
 
-    const entry: ServerLogEntry = {
+    record(managed, {
       serverId,
       line,
       timestamp: Date.now(),
       level
-    }
-
-    managed.logBuffer.push(entry)
-    if (managed.logBuffer.length > MAX_BUFFER_SIZE) {
-      managed.logBuffer.shift()
-    }
-
-    // Send to all renderer windows
-    BrowserWindow.getAllWindows().forEach((win) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send(IPC_EVENTS.SERVER_LOG, entry)
-      }
     })
   }
 
@@ -69,7 +71,29 @@ export function attachConsole(serverId: string, childProcess: ChildProcess): voi
     lines.forEach((line) => pushLine(line, true))
   })
 
+  // Preserve any provisioning logs that were buffered before the process
+  // started, so the console shows a continuous history.
+  const existing = consoles.get(serverId)
+  if (existing) {
+    managed.logBuffer = existing.logBuffer
+  }
+
   consoles.set(serverId, managed)
+}
+
+/**
+ * Append a synthetic log line for a server that has no live process yet
+ * (e.g. progress messages while the server is being provisioned). The line
+ * is buffered and broadcast exactly like real console output.
+ */
+export function pushLog(serverId: string, line: string, level?: ServerLogEntry['level']): void {
+  let managed = consoles.get(serverId)
+  if (!managed) {
+    managed = { serverId, logBuffer: [] }
+    consoles.set(serverId, managed)
+  }
+
+  record(managed, { serverId, line, timestamp: Date.now(), level })
 }
 
 /**
@@ -77,7 +101,7 @@ export function attachConsole(serverId: string, childProcess: ChildProcess): voi
  */
 export function sendCommand(serverId: string, command: string): boolean {
   const managed = consoles.get(serverId)
-  if (!managed || !managed.process.stdin?.writable) {
+  if (!managed || !managed.process?.stdin?.writable) {
     log.warn(`[Console] Cannot send command to server ${serverId}: not running`)
     return false
   }
