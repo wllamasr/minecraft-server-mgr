@@ -54,6 +54,9 @@ const api = {
   searchMods: (options: import('../shared/types/mod.types').ModSearchOptions): Promise<import('../shared/types/mod.types').ModSearchResponse> =>
     ipcRenderer.invoke('mod-manager:search', options),
 
+  searchModpacks: (options: import('../shared/types/mod.types').ModSearchOptions): Promise<import('../shared/types/mod.types').ModSearchResponse> =>
+    ipcRenderer.invoke('mod-manager:search-modpacks', options),
+
   getMod: (source: import('../shared/types/mod.types').ModSource, id: string): Promise<import('../shared/types/mod.types').UnifiedMod & { descriptionHtml: string }> =>
     ipcRenderer.invoke('mod-manager:get', { source, id }),
 

@@ -14,7 +14,12 @@ export const servers = sqliteTable('servers', {
   maxRam: text('max_ram').notNull().default('2G'),
   autoStart: integer('auto_start', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull(),
-  updatedAt: text('updated_at').notNull()
+  updatedAt: text('updated_at').notNull(),
+  // Modpack provenance (set when the server was deployed from a modpack)
+  modpackSource: text('modpack_source'),
+  modpackProjectId: text('modpack_project_id'),
+  modpackVersionId: text('modpack_version_id'),
+  modpackName: text('modpack_name')
 })
 
 // ─── Installed Mods ─────────────────────────────────────────

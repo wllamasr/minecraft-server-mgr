@@ -1,5 +1,15 @@
 import type { ModLoaderType } from '../constants/mod-loaders'
+import type { ModSource } from './mod.types'
 export type { ModLoaderType }
+
+/** Reference to the modpack a server was deployed from (for updates). */
+export interface ModpackRef {
+  source: ModSource
+  projectId: string
+  versionId: string
+  mrpackUrl: string
+  name: string
+}
 
 export type ServerStatus =
   | 'stopped'
@@ -24,6 +34,10 @@ export interface ServerInstance {
   autoStart: boolean
   createdAt: string
   updatedAt: string
+  modpackSource: ModSource | null
+  modpackProjectId: string | null
+  modpackVersionId: string | null
+  modpackName: string | null
 }
 
 export interface CreateServerInput {
@@ -38,6 +52,8 @@ export interface CreateServerInput {
   motd?: string
   /** Automatically restart the server if it crashes. */
   autoStart?: boolean
+  /** When set, provision the server from this Modrinth/CurseForge modpack. */
+  modpack?: ModpackRef
 }
 
 export interface ServerWithStatus extends ServerInstance {

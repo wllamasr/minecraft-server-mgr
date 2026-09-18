@@ -93,6 +93,20 @@ Out of scope: remote/headless server orchestration, Bedrock edition, proxy netwo
   tracked per server.
 - **FR-22** Vanilla servers block mod installation and surface guidance to set a loader.
 
+### 4.5b Modpacks
+
+- **FR-22a** The user can search Modrinth modpacks or paste a Modrinth modpack link,
+  pick a version, and **deploy** it as a new server in one action.
+- **FR-22b** Deploying a `.mrpack` provisions the server with the exact Minecraft
+  version and loader the pack pins, downloads the pack's server-relevant files,
+  and applies the pack's config overrides. Client-only files are skipped, and any
+  path that would escape the server directory is rejected (zip-slip safe).
+- **FR-22c** The server records the modpack it was deployed from (source, project,
+  version) so the pack can later be updated.
+- *Deferred:* CurseForge modpack deploy and in-app "update to a newer pack version"
+  (the model and provenance fields are in place; adding individual mods on top of a
+  deployed pack already works through the mod browser).
+
 ### 4.6 Runtime diagnostics
 
 - **FR-23** While running, the server streams stdout/stderr to a live console, and the user

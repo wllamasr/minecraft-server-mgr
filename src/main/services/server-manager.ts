@@ -11,11 +11,12 @@ import { findBestJava } from './java-detector'
 import { attachConsole, detachConsole, sendCommand as consoleSendCommand, pushLog } from './console-manager'
 import { startTelemetry, stopTelemetry } from './telemetry-manager'
 import { installModLoader } from './mod-loader-installer'
+import { applyModpack } from './modpack-manager'
 import log from '../utils/logger'
 import { IPC_EVENTS } from '../../shared/constants'
 import { DEFAULTS } from '../../shared/constants'
 import { formatProgress } from '../../shared/utils/format'
-import type { ServerInstance, ServerWithStatus, ServerStatus, CreateServerInput } from '../../shared/types'
+import type { ServerInstance, ServerWithStatus, ServerStatus, CreateServerInput, ModSource } from '../../shared/types'
 
 // ─── In-memory process tracking ────────────────────────────
 interface RunningServer {
@@ -59,6 +60,7 @@ export function listServers(): ServerWithStatus[] {
   return rows.map((row) => ({
     ...row,
     modLoader: row.modLoader as ServerInstance['modLoader'],
+    modpackSource: row.modpackSource as ModSource | null,
     status: getServerStatus(row.id),
     pid: runningServers.get(row.id)?.process.pid
   }))
@@ -72,6 +74,7 @@ export function getServer(serverId: string): ServerWithStatus | null {
   return {
     ...row,
     modLoader: row.modLoader as ServerInstance['modLoader'],
+    modpackSource: row.modpackSource as ModSource | null,
     status: getServerStatus(row.id),
     pid: runningServers.get(row.id)?.process.pid
   }
@@ -116,7 +119,11 @@ export function createServer(input: CreateServerInput): ServerInstance {
     maxRam: input.maxRam || DEFAULTS.MAX_RAM,
     autoStart: input.autoStart ?? false,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    modpackSource: input.modpack?.source ?? null,
+    modpackProjectId: input.modpack?.projectId ?? null,
+    modpackVersionId: input.modpack?.versionId ?? null,
+    modpackName: input.modpack?.name ?? null
   }
 
   db.insert(schema.servers).values(server).run()
@@ -159,8 +166,27 @@ async function provisionServer(
     writeFileSync(join(serverDir, 'server.properties'), generateDefaultProperties(input))
     writeFileSync(join(serverDir, 'eula.txt'), 'eula=true\n')
 
-    // 3. Install the mod loader, if any.
-    if (input.modLoader && input.modLoaderVersion) {
+    // 3. Install the mod loader / apply the modpack.
+    if (input.modpack) {
+      const result = await applyModpack(serverId, serverDir, input.modpack.mrpackUrl, (line, level) =>
+        pushLog(serverId, line, level ?? 'INFO')
+      )
+      // The pack pins the exact MC version and loader; persist them.
+      getDatabase()
+        .update(schema.servers)
+        .set({
+          minecraftVersion: result.minecraftVersion || input.minecraftVersion,
+          modLoader: result.loader,
+          modLoaderVersion: result.loaderVersion,
+          modpackSource: input.modpack.source,
+          modpackProjectId: input.modpack.projectId,
+          modpackVersionId: input.modpack.versionId,
+          modpackName: input.modpack.name,
+          updatedAt: new Date().toISOString()
+        })
+        .where(eq(schema.servers.id, serverId))
+        .run()
+    } else if (input.modLoader && input.modLoaderVersion) {
       pushLog(serverId, `Installing ${input.modLoader} ${input.modLoaderVersion}...`, 'INFO')
       await installModLoader(input.modLoader, input.modLoaderVersion, input.minecraftVersion, serverDir)
     }

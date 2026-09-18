@@ -21,6 +21,14 @@ export async function searchMods(options: ModSearchOptions): Promise<ModSearchRe
   }
 }
 
+export async function searchModpacks(options: ModSearchOptions): Promise<ModSearchResponse> {
+  if (options.source === 'modrinth') {
+    return modrinth.searchModpacks(options)
+  }
+  // CurseForge modpack support is planned; see docs/SPEC.md.
+  throw new Error('CurseForge modpack search is not supported yet — use Modrinth.')
+}
+
 export async function getMod(source: ModSource, id: string): Promise<UnifiedMod & { descriptionHtml: string }> {
   if (source === 'modrinth') {
     return modrinth.getMod(id)

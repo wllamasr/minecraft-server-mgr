@@ -36,7 +36,11 @@ export function runMigrations(): void {
       max_ram TEXT NOT NULL DEFAULT '2G',
       auto_start INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      modpack_source TEXT,
+      modpack_project_id TEXT,
+      modpack_version_id TEXT,
+      modpack_name TEXT
     );
 
     CREATE TABLE IF NOT EXISTS installed_mods (
@@ -57,6 +61,22 @@ export function runMigrations(): void {
       value TEXT NOT NULL
     );
   `)
+
+  // Additive column migrations for databases created before a column existed.
+  // SQLite has no "ADD COLUMN IF NOT EXISTS", so check the table info first.
+  const serverColumns = new Set(
+    (sqlite.pragma('table_info(servers)') as { name: string }[]).map((c) => c.name)
+  )
+  const addServerColumn = (name: string, definition: string): void => {
+    if (!serverColumns.has(name)) {
+      sqlite.exec(`ALTER TABLE servers ADD COLUMN ${definition};`)
+      log.info(`[DB] Added column servers.${name}`)
+    }
+  }
+  addServerColumn('modpack_source', 'modpack_source TEXT')
+  addServerColumn('modpack_project_id', 'modpack_project_id TEXT')
+  addServerColumn('modpack_version_id', 'modpack_version_id TEXT')
+  addServerColumn('modpack_name', 'modpack_name TEXT')
 
   sqlite.close()
   log.info('[DB] Migrations completed successfully')

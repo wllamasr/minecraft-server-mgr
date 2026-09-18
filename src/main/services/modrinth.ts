@@ -67,7 +67,19 @@ interface ModrinthVersion {
 
 // ─── API Methods ──────────────────────────────────────────
 
-export async function searchMods(options: ModSearchOptions): Promise<ModSearchResponse> {
+export function searchMods(options: ModSearchOptions): Promise<ModSearchResponse> {
+  return runSearch(options, 'mod')
+}
+
+/** Search Modrinth for modpack projects (returns them as UnifiedMod entries). */
+export function searchModpacks(options: ModSearchOptions): Promise<ModSearchResponse> {
+  return runSearch(options, 'modpack')
+}
+
+async function runSearch(
+  options: ModSearchOptions,
+  projectType: 'mod' | 'modpack'
+): Promise<ModSearchResponse> {
   const params = new URLSearchParams()
   if (options.query) params.append('query', options.query)
   params.append('limit', String(options.limit || 20))
@@ -76,8 +88,7 @@ export async function searchMods(options: ModSearchOptions): Promise<ModSearchRe
   // Facets for filtering by loader and game version
   const facets: string[][] = []
 
-  // Always only search for 'mod' type projects
-  facets.push(['project_type:mod'])
+  facets.push([`project_type:${projectType}`])
 
   if (options.loader) {
     facets.push([`categories:${options.loader}`])

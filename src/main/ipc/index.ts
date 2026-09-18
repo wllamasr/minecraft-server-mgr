@@ -79,6 +79,10 @@ export function registerIpcHandlers(): void {
     return await modManager.searchMods(options)
   })
 
+  ipcMain.handle('mod-manager:search-modpacks', async (_e, options) => {
+    return await modManager.searchModpacks(options)
+  })
+
   ipcMain.handle('mod-manager:get', async (_e, { source, id }) => {
     return await modManager.getMod(source, id)
   })

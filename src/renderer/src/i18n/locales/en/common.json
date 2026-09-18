@@ -12,6 +12,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "servers": "Servers",
+    "modpacks": "Modpacks",
     "mods": "Mods",
     "settings": "Settings"
   },
