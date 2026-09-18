@@ -48,7 +48,8 @@ func (s *Server) info() map[string]any {
 		"os":           runtime.GOOS,
 		"arch":         runtime.GOARCH,
 		"hostname":     host,
-		"javaPath":     s.cfg.JavaPath,
+		"javaOverride": s.cfg.JavaPath,
+		"java":         s.mgr.JavaInstallations(),
 		"serversRoot":  s.cfg.ServersRoot,
 	}
 }

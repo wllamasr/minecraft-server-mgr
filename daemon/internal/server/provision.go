@@ -55,6 +55,12 @@ func (m *Manager) provision(s store.Server) {
 		return
 	}
 
+	emit("Ensuring a compatible Java runtime is installed...", "INFO")
+	if _, err := m.java.Ensure(s.MinecraftVersion, func(line string) { emit(line, "INFO") }); err != nil {
+		m.failProvision(s.ID, err)
+		return
+	}
+
 	m.clearProvisioning(s.ID)
 	emit("✔ Provisioning complete — the server is ready to start.", "INFO")
 	m.broadcast(s.ID, StatusStopped)

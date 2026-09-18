@@ -17,6 +17,7 @@ import (
 
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/config"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/console"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/java"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
 )
 
@@ -70,6 +71,7 @@ type Manager struct {
 	cfg   config.Config
 	store *store.Store
 	hub   *console.Hub
+	java  *java.Manager
 
 	mu           sync.Mutex
 	running      map[string]*runningServer
@@ -83,6 +85,7 @@ func NewManager(cfg config.Config, st *store.Store, hub *console.Hub) *Manager {
 		cfg:          cfg,
 		store:        st,
 		hub:          hub,
+		java:         java.New(cfg.JavaDir, cfg.JavaPath),
 		running:      map[string]*runningServer{},
 		provisioning: map[string]Status{},
 		restarts:     map[string][]time.Time{},
@@ -91,6 +94,9 @@ func NewManager(cfg config.Config, st *store.Store, hub *console.Hub) *Manager {
 
 // Hub exposes the console/event hub for the API layer.
 func (m *Manager) Hub() *console.Hub { return m.hub }
+
+// JavaInstallations reports the JDKs discovered on the host (for /v1/info).
+func (m *Manager) JavaInstallations() []java.Installation { return m.java.Detect() }
 
 // List returns every server with its current status.
 func (m *Manager) List() []View {
@@ -200,8 +206,15 @@ func (m *Manager) Start(id string) error {
 		return fmt.Errorf("server.jar not found in %s", s.Dir)
 	}
 
+	javaPath, err := m.java.Ensure(s.MinecraftVersion, func(line string) {
+		m.hub.PushLog(id, line, "INFO")
+	})
+	if err != nil {
+		return err
+	}
+
 	args := []string{"-Xms" + s.MinRAM, "-Xmx" + s.MaxRAM, "-jar", "server.jar", "nogui"}
-	cmd := exec.Command(m.cfg.JavaPath, args...)
+	cmd := exec.Command(javaPath, args...)
 	cmd.Dir = s.Dir
 
 	stdin, err := cmd.StdinPipe()

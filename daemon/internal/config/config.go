@@ -29,7 +29,8 @@ type Config struct {
 	KeyPath     string
 	TokenPath   string
 	StorePath   string // servers.json
-	JavaPath    string // "java" or an absolute path
+	JavaPath    string // optional fixed java binary; empty means auto-manage
+	JavaDir     string // where auto-installed JDKs are kept
 }
 
 // Load resolves configuration from explicit values, environment, and defaults.
@@ -53,17 +54,20 @@ func Load(addr, dataDir string) (Config, error) {
 		KeyPath:     filepath.Join(abs, "key.pem"),
 		TokenPath:   filepath.Join(abs, "token"),
 		StorePath:   filepath.Join(abs, "servers.json"),
-		JavaPath:    envOr("MSMD_JAVA", "java"),
+		JavaPath:    os.Getenv("MSMD_JAVA"), // empty => auto-detect/-install
+		JavaDir:     envOr("MSMD_JAVA_DIR", filepath.Join(abs, "jdks")),
 	}
 	return cfg, nil
 }
 
-// EnsureDirs creates the data and servers directories.
+// EnsureDirs creates the data, servers, and JDK directories.
 func (c Config) EnsureDirs() error {
-	if err := os.MkdirAll(c.DataDir, 0o750); err != nil {
-		return err
+	for _, d := range []string{c.DataDir, c.ServersRoot, c.JavaDir} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			return err
+		}
 	}
-	return os.MkdirAll(c.ServersRoot, 0o750)
+	return nil
 }
 
 // EnsureToken returns the existing API token or generates and persists a new one.
@@ -81,6 +85,19 @@ func (c Config) EnsureToken() (token string, created bool, err error) {
 		return "", false, err
 	}
 	return token, true, nil
+}
+
+// RotateToken generates and persists a fresh API token, invalidating the old one.
+func (c Config) RotateToken() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	token := hex.EncodeToString(raw)
+	if err := os.WriteFile(c.TokenPath, []byte(token), 0o600); err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 // EnsureCert generates a self-signed certificate/key pair on first run.
