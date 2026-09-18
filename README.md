@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/wllamasr/minecraft-server-mgr/actions/workflows/ci.yml/badge.svg)](https://github.com/wllamasr/minecraft-server-mgr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Electron](https://img.shields.io/badge/Electron-34-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
 
 Minecraft Server Manager (MSM) turns the tedious, terminal-driven chore of running a
 Minecraft server into a point-and-click experience. Download a server jar, pick a mod
@@ -33,8 +33,8 @@ from a single window. No batch scripts, no manual EULA edits.
 
 | Layer            | Technology                                             |
 | ---------------- | ------------------------------------------------------ |
-| Shell            | Electron 34 (frameless, custom title bar)              |
-| UI               | React 19 + Mantine UI 8 + Tabler Icons                 |
+| Shell            | Electron 44 (frameless, custom title bar)              |
+| UI               | React 19 + Mantine UI 9 + Tabler Icons                 |
 | Routing / data   | TanStack Router + TanStack Query                       |
 | Build            | electron-vite (Vite 7) + electron-builder              |
 | Persistence      | SQLite (better-sqlite3) + Drizzle ORM                  |
