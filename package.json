@@ -16,6 +16,9 @@
     "preview": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
     "package": "electron-vite build && electron-builder --win --config",
+    "typecheck": "tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
@@ -61,6 +64,7 @@
     "postcss": "^8.5.0",
     "postcss-preset-mantine": "^1.17.0",
     "postcss-simple-vars": "^7.0.1",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
   }
 }

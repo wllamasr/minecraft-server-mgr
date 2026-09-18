@@ -16,7 +16,7 @@ const COMMON_JAVA_PATHS_WIN = [
 /**
  * Parse the output of `java -version` to extract version info.
  */
-function parseJavaVersion(output: string): { version: string; major: number; is64Bit: boolean } | null {
+export function parseJavaVersion(output: string): { version: string; major: number; is64Bit: boolean } | null {
   // java version "21.0.2" or openjdk version "17.0.10"
   const versionMatch = output.match(/(?:java|openjdk)\s+version\s+"([^"]+)"/i)
   if (!versionMatch) return null

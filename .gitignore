@@ -1,6 +1,8 @@
 node_modules/
 out/
 dist/
+.tanstack/
+*.tsbuildinfo
 *.db
 *.db-wal
 *.db-shm

@@ -62,7 +62,9 @@ export function ServerMods({ server }: ServerModsProps) {
         <Button
           component={Link}
           to="/mods/"
-          search={{ serverId: server.id }}
+          // Mantine's polymorphic `component` prop erases TanStack Router's
+          // typed-search inference, so we assert the (correct) search shape.
+          search={{ serverId: server.id } as never}
           leftSection={<IconPackage size={18} />}
           disabled={isVanilla}
           variant="light"

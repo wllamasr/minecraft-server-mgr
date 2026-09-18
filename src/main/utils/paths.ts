@@ -4,6 +4,7 @@ import { mkdirSync } from 'fs'
 import { getDatabase, schema } from '../database/client'
 import { eq } from 'drizzle-orm'
 import { DEFAULTS } from '../../shared/constants'
+import { sanitizeServerName } from '../../shared/utils/sanitize'
 
 /**
  * Get the default servers root directory.
@@ -31,6 +32,6 @@ export function getServersRootDir(): string {
  */
 export function getServerDir(serverName: string): string {
   const root = getServersRootDir()
-  const safeName = serverName.replace(/[^a-zA-Z0-9_-]/g, '_')
+  const safeName = sanitizeServerName(serverName)
   return join(root, safeName)
 }
