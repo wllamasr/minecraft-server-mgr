@@ -1,6 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, IPC_EVENTS } from '../shared/constants'
-import type { CreateServerInput, ServerWithStatus, JavaInstallation, ServerLogEntry, ModLoaderType } from '../shared/types'
+import type {
+  CreateServerInput,
+  ServerWithStatus,
+  JavaInstallation,
+  ServerLogEntry,
+  ModLoaderType,
+  RemoteHost,
+  HostInfo,
+  RemoteServer,
+  AddHostInput,
+  CreateRemoteServerInput
+} from '../shared/types'
 
 /** Typed API exposed to the renderer process via contextBridge */
 const api = {
@@ -74,6 +85,31 @@ const api = {
 
   toggleMod: (serverId: string, modDbId: string, enable: boolean): Promise<void> =>
     ipcRenderer.invoke('mod-manager:toggle', { serverId, modDbId, enable }),
+
+  // ─── Remote Hosts (daemons) ───────────────────────────
+  listHosts: (): Promise<RemoteHost[]> => ipcRenderer.invoke('hosts:list'),
+  addHost: (input: AddHostInput): Promise<RemoteHost> => ipcRenderer.invoke('hosts:add', input),
+  removeHost: (id: string): Promise<void> => ipcRenderer.invoke('hosts:remove', id),
+  hostInfo: (id: string): Promise<HostInfo> => ipcRenderer.invoke('hosts:info', id),
+  listRemoteServers: (id: string): Promise<RemoteServer[]> => ipcRenderer.invoke('hosts:servers', id),
+  createRemoteServer: (hostId: string, input: CreateRemoteServerInput): Promise<RemoteServer> =>
+    ipcRenderer.invoke('hosts:create-server', { hostId, input }),
+  startRemoteServer: (hostId: string, serverId: string): Promise<void> =>
+    ipcRenderer.invoke('hosts:start', { hostId, serverId }),
+  stopRemoteServer: (hostId: string, serverId: string): Promise<void> =>
+    ipcRenderer.invoke('hosts:stop', { hostId, serverId }),
+  deleteRemoteServer: (hostId: string, serverId: string): Promise<void> =>
+    ipcRenderer.invoke('hosts:delete-server', { hostId, serverId }),
+  sendRemoteCommand: (hostId: string, serverId: string, command: string): Promise<void> =>
+    ipcRenderer.invoke('hosts:command', { hostId, serverId, command }),
+  remoteServerLogs: (hostId: string, serverId: string): Promise<ServerLogEntry[]> =>
+    ipcRenderer.invoke('hosts:logs', { hostId, serverId }),
+  remoteLoaderVersions: (
+    hostId: string,
+    loader: string,
+    mcVersion: string
+  ): Promise<{ version: string; stable: boolean }[]> =>
+    ipcRenderer.invoke('hosts:loader-versions', { hostId, loader, mcVersion }),
 
   // ─── App / Window ─────────────────────────────────────
   getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),

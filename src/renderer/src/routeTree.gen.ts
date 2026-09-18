@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ConfigServerIdRouteImport } from './routes/config/$serverId'
 import { Route as ConsoleServerIdRouteImport } from './routes/console/$serverId'
+import { Route as HostsIndexRouteImport } from './routes/hosts/index'
 import { Route as ModpacksIndexRouteImport } from './routes/modpacks/index'
 import { Route as ModsIndexRouteImport } from './routes/mods/index'
 import { Route as ModsModIdRouteImport } from './routes/mods/$modId'
@@ -38,6 +39,11 @@ const ConfigServerIdRoute = ConfigServerIdRouteImport.update({
 const ConsoleServerIdRoute = ConsoleServerIdRouteImport.update({
   id: '/console/$serverId',
   path: '/console/$serverId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HostsIndexRoute = HostsIndexRouteImport.update({
+  id: '/hosts/',
+  path: '/hosts/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ModpacksIndexRoute = ModpacksIndexRouteImport.update({
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/mods/$modId': typeof ModsModIdRoute
   '/servers/$serverId': typeof ServersServerIdRoute
   '/servers/create': typeof ServersCreateRoute
+  '/hosts/': typeof HostsIndexRoute
   '/modpacks/': typeof ModpacksIndexRoute
   '/mods/': typeof ModsIndexRoute
   '/servers/': typeof ServersIndexRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/mods/$modId': typeof ModsModIdRoute
   '/servers/$serverId': typeof ServersServerIdRoute
   '/servers/create': typeof ServersCreateRoute
+  '/hosts': typeof HostsIndexRoute
   '/modpacks': typeof ModpacksIndexRoute
   '/mods': typeof ModsIndexRoute
   '/servers': typeof ServersIndexRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/mods/$modId': typeof ModsModIdRoute
   '/servers/$serverId': typeof ServersServerIdRoute
   '/servers/create': typeof ServersCreateRoute
+  '/hosts/': typeof HostsIndexRoute
   '/modpacks/': typeof ModpacksIndexRoute
   '/mods/': typeof ModsIndexRoute
   '/servers/': typeof ServersIndexRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/mods/$modId'
     | '/servers/$serverId'
     | '/servers/create'
+    | '/hosts/'
     | '/modpacks/'
     | '/mods/'
     | '/servers/'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/mods/$modId'
     | '/servers/$serverId'
     | '/servers/create'
+    | '/hosts'
     | '/modpacks'
     | '/mods'
     | '/servers'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/mods/$modId'
     | '/servers/$serverId'
     | '/servers/create'
+    | '/hosts/'
     | '/modpacks/'
     | '/mods/'
     | '/servers/'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   ModsModIdRoute: typeof ModsModIdRoute
   ServersServerIdRoute: typeof ServersServerIdRoute
   ServersCreateRoute: typeof ServersCreateRoute
+  HostsIndexRoute: typeof HostsIndexRoute
   ModpacksIndexRoute: typeof ModpacksIndexRoute
   ModsIndexRoute: typeof ModsIndexRoute
   ServersIndexRoute: typeof ServersIndexRoute
@@ -188,6 +201,13 @@ declare module '@tanstack/react-router' {
       path: '/console/$serverId'
       fullPath: '/console/$serverId'
       preLoaderRoute: typeof ConsoleServerIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hosts/': {
+      id: '/hosts/'
+      path: '/hosts'
+      fullPath: '/hosts/'
+      preLoaderRoute: typeof HostsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/modpacks/': {
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   ModsModIdRoute: ModsModIdRoute,
   ServersServerIdRoute: ServersServerIdRoute,
   ServersCreateRoute: ServersCreateRoute,
+  HostsIndexRoute: HostsIndexRoute,
   ModpacksIndexRoute: ModpacksIndexRoute,
   ModsIndexRoute: ModsIndexRoute,
   ServersIndexRoute: ServersIndexRoute,

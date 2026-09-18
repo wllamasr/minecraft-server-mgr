@@ -43,3 +43,13 @@ export const appSettings = sqliteTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull()
 })
+
+// ─── Remote Hosts (daemons) ─────────────────────────────────
+export const hosts = sqliteTable('hosts', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  baseUrl: text('base_url').notNull(), // https://host:8443
+  fingerprint: text('fingerprint').notNull(), // pinned cert SHA-256 (TOFU)
+  tokenEnc: text('token_enc').notNull(), // safeStorage-encrypted API token (base64)
+  createdAt: text('created_at').notNull()
+})

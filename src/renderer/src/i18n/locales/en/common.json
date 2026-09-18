@@ -13,6 +13,7 @@
     "dashboard": "Dashboard",
     "servers": "Servers",
     "modpacks": "Modpacks",
+    "hosts": "Remote Hosts",
     "mods": "Mods",
     "settings": "Settings"
   },

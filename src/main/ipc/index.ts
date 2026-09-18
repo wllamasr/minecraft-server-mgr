@@ -4,6 +4,7 @@ import * as serverManager from '../services/server-manager'
 import * as consoleManager from '../services/console-manager'
 import * as configManager from '../services/config-manager'
 import * as modManager from '../services/mod-manager'
+import * as hostsManager from '../services/hosts-manager'
 import { detectJavaInstallations } from '../services/java-detector'
 import { getLoaderVersions, installModLoader } from '../services/mod-loader-installer'
 import { app } from 'electron'
@@ -75,6 +76,34 @@ export function registerIpcHandlers(): void {
   })
 
   // ─── Mod Manager ────────────────────────────────────────
+  // ─── Remote Hosts (daemons) ─────────────────────────────
+  ipcMain.handle('hosts:list', () => hostsManager.listHosts())
+  ipcMain.handle('hosts:add', (_e, input) => hostsManager.addHost(input))
+  ipcMain.handle('hosts:remove', (_e, id: string) => hostsManager.removeHost(id))
+  ipcMain.handle('hosts:info', (_e, id: string) => hostsManager.hostInfo(id))
+  ipcMain.handle('hosts:servers', (_e, id: string) => hostsManager.listRemoteServers(id))
+  ipcMain.handle('hosts:create-server', (_e, { hostId, input }) =>
+    hostsManager.createRemoteServer(hostId, input)
+  )
+  ipcMain.handle('hosts:start', (_e, { hostId, serverId }) =>
+    hostsManager.startRemoteServer(hostId, serverId)
+  )
+  ipcMain.handle('hosts:stop', (_e, { hostId, serverId }) =>
+    hostsManager.stopRemoteServer(hostId, serverId)
+  )
+  ipcMain.handle('hosts:delete-server', (_e, { hostId, serverId }) =>
+    hostsManager.deleteRemoteServer(hostId, serverId)
+  )
+  ipcMain.handle('hosts:command', (_e, { hostId, serverId, command }) =>
+    hostsManager.sendRemoteCommand(hostId, serverId, command)
+  )
+  ipcMain.handle('hosts:logs', (_e, { hostId, serverId }) =>
+    hostsManager.remoteServerLogs(hostId, serverId)
+  )
+  ipcMain.handle('hosts:loader-versions', (_e, { hostId, loader, mcVersion }) =>
+    hostsManager.remoteLoaderVersions(hostId, loader, mcVersion)
+  )
+
   ipcMain.handle('mod-manager:search', async (_e, options) => {
     return await modManager.searchMods(options)
   })

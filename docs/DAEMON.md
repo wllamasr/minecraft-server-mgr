@@ -294,7 +294,7 @@ daemon cryptographically, replacing/augmenting the bearer token.
 | --- | --- | --- |
 | **A** | Manager: extract `ServerProvider`; wrap current services in `LocalProvider`; add `hosts` table with a seeded `local` host. | No user-visible change. |
 | **B** ✅ | Daemon MVP (Go): health, info, server CRUD + lifecycle, console stream (SSE), TLS + token auth, systemd install script. | **Done** — see [`../daemon/`](../daemon/); pair and run servers via curl. |
-| **C** | Manager: `RemoteProvider` + "Add Remote Host" UI + host switcher + secret storage. | Manage a remote server end-to-end. |
+| **C** 🟡 | Manager: daemon client (TLS fingerprint pinning) + "Add Remote Host" UI + secret storage (safeStorage) + a **Remote Hosts** page to pair a host and deploy/start/stop/delete servers and view their console. | **Partial** — shipped as an additive Remote Hosts section (`hosts` table, `remote-client`, `hosts-manager`, `/hosts` route). The full unified `ServerProvider` (Phase A, so local + remote appear together) and live SSE streaming to the manager are still to come. |
 | **D** | Parity: mods, properties editor, telemetry, crash auto-restart over the wire. | Feature parity with local. |
 | **E** | Hardening: mTLS, token rotation, daemon self-update, release CI for daemon binaries. | Production-ready. |
 

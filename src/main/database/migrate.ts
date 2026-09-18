@@ -60,6 +60,15 @@ export function runMigrations(): void {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS hosts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      token_enc TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `)
 
   // Additive column migrations for databases created before a column existed.

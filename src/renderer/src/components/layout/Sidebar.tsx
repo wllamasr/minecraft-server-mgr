@@ -1,5 +1,5 @@
 import { NavLink, Stack, Box, Text, Group, UnstyledButton } from '@mantine/core'
-import { IconLayoutDashboard, IconServer, IconSettings, IconPackage, IconBoxMultiple, IconDots } from '@tabler/icons-react'
+import { IconLayoutDashboard, IconServer, IconSettings, IconPackage, IconBoxMultiple, IconCloud, IconDots } from '@tabler/icons-react'
 import { useRouter, useRouterState } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { path: '/', icon: IconLayoutDashboard, labelKey: 'nav.dashboard' },
   { path: '/servers', icon: IconServer, labelKey: 'nav.servers' },
   { path: '/modpacks', icon: IconBoxMultiple, labelKey: 'nav.modpacks' },
+  { path: '/hosts', icon: IconCloud, labelKey: 'nav.hosts' },
   { path: '/mods', icon: IconPackage, labelKey: 'nav.mods' },
   { path: '/settings', icon: IconSettings, labelKey: 'nav.settings' }
 ]
