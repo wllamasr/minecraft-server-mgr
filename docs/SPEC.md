@@ -32,7 +32,12 @@ Out of scope: remote/headless server orchestration, Bedrock edition, proxy netwo
 ### 4.1 Server creation
 
 - **FR-1** The user can create a server by providing a **name** and a **Minecraft version**,
-  and optionally a mod loader (+ loader version), port, and min/max RAM.
+  and optionally a mod loader (+ loader version), port, min/max RAM, a server-list **MOTD**,
+  and an **auto-restart** preference.
+- **FR-1b** Server creation is **asynchronous**: the server is registered immediately in a
+  `provisioning` state and the jar download + mod-loader install run in the background,
+  streaming progress to the server console. On failure the server enters an `error` state
+  with the reason in its console.
 - **FR-2** The server name is sanitized to a filesystem-safe folder name; characters outside
   `[A-Za-z0-9_-]` become `_`.
 - **FR-3** Creation fails if the target directory already exists.
@@ -57,6 +62,9 @@ Out of scope: remote/headless server orchestration, Bedrock edition, proxy netwo
   `user_jvm_args.txt`.
 - **FR-12** Stop issues the `stop` console command for a graceful shutdown and force-kills
   after 30 seconds if the process has not exited.
+- **FR-12b** When **auto-restart** is enabled, a server that exits with a non-zero code
+  (a crash, not an intentional stop) is restarted after a short delay, up to 3 times per
+  minute before giving up, with each attempt logged to the console.
 - **FR-13** Delete stops the server if running, removes its DB row, and deletes its
   directory. Failure to delete files is logged but does not abort the row removal.
 

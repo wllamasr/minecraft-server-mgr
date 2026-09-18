@@ -34,6 +34,10 @@ export interface CreateServerInput {
   port?: number
   minRam?: string
   maxRam?: string
+  /** Optional server list MOTD; falls back to a default when empty. */
+  motd?: string
+  /** Automatically restart the server if it crashes. */
+  autoStart?: boolean
 }
 
 export interface ServerWithStatus extends ServerInstance {

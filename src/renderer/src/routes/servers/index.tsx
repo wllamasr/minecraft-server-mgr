@@ -20,6 +20,22 @@ export const Route = createFileRoute('/servers/')({
   component: ServerListPage
 })
 
+function statusColor(status: ServerWithStatus['status']): string {
+  switch (status) {
+    case 'running':
+      return 'emerald.4'
+    case 'starting':
+    case 'stopping':
+    case 'provisioning':
+      return 'blue.4'
+    case 'crashed':
+    case 'error':
+      return 'red.5'
+    default:
+      return 'dark.3'
+  }
+}
+
 function ServerListPage() {
   const { t } = useTranslation(['servers', 'common'])
   const navigate = useNavigate()
@@ -37,12 +53,18 @@ function ServerListPage() {
     return servers.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) || 
                             s.minecraftVersion.includes(search)
-      const matchesFilter = filter === 'all' || 
+      const matchesFilter = filter === 'all' ||
                            (filter === 'running' && s.status === 'running') ||
-                           (filter === 'warning' && s.status === 'stopped') // Placeholder for warning logic
+                           (filter === 'warning' && (s.status === 'crashed' || s.status === 'error'))
       return matchesSearch && matchesFilter
     })
   }, [servers, search, filter])
+
+  const counts = useMemo(() => {
+    const running = servers.filter((s) => s.status === 'running').length
+    const attention = servers.filter((s) => s.status === 'crashed' || s.status === 'error').length
+    return { total: servers.length, running, attention, idle: servers.length - running - attention }
+  }, [servers])
 
   const startMutation = useMutation({
     mutationFn: (id: string) => window.api.startServer(id),
@@ -149,27 +171,23 @@ function ServerListPage() {
                      <Box>
                         <Text fw={900} size="lg">{server.name}</Text>
                         <Group gap={8}>
-                           <Box w={6} h={6} bg={server.status === 'running' ? 'emerald.4' : 'dark.3'} style={{ borderRadius: '50%' }} />
-                           <Text size="xs" fw={800} tt="uppercase" c={server.status === 'running' ? 'emerald.4' : 'dark.2'}>
+                           <Box w={6} h={6} bg={statusColor(server.status)} style={{ borderRadius: '50%' }} />
+                           <Text size="xs" fw={800} tt="uppercase" c={statusColor(server.status)}>
                              {server.status}
                            </Text>
                         </Group>
                      </Box>
                   </Group>
 
-                  {/* Metrics */}
-                  <Box style={{ minWidth: 150 }}>
-                     <Group justify="space-between" mb={4}>
-                        <Text size="xs" fw={800} c="dark.2" tt="uppercase">Ram Usage</Text>
-                        <Text size="xs" fw={800}>8.2 GB / {server.maxRam || '12.0 GB'}</Text>
-                     </Group>
-                     <Progress value={server.status === 'running' ? 68 : 0} color="emerald.4" size="xs" radius="xl" />
+                  {/* Real configuration facts */}
+                  <Box ta="center" style={{ minWidth: 90 }}>
+                     <Text size="xs" fw={800} c="dark.2" tt="uppercase">Max RAM</Text>
+                     <Text fw={900} size="md">{server.maxRam}</Text>
                   </Box>
 
-                  {/* Metadata */}
-                  <Box ta="center">
-                     <Text size="xs" fw={800} c="dark.2" tt="uppercase">Players</Text>
-                     <Text fw={900} size="md">42 <Text component="span" c="dark.4" size="sm">/ 100</Text></Text>
+                  <Box ta="center" style={{ minWidth: 90 }}>
+                     <Text size="xs" fw={800} c="dark.2" tt="uppercase">Port</Text>
+                     <Text fw={900} size="md">{server.port}</Text>
                   </Box>
 
                   <Box ta="center">
@@ -213,71 +231,25 @@ function ServerListPage() {
         )}
       </Stack>
 
-      {/* Bottom Insights */}
-      <Grid gutter={24} mt={24}>
-         <Grid.Col span={8}>
-            <Card p={24} bg="dark.6" radius="md">
-               <Group justify="space-between" mb="xl">
-                  <Text fw={900} size="md">System Logs</Text>
-                  <Group gap={4} c="emerald.4" style={{ cursor: 'pointer' }}>
-                     <Text size="xs" fw={800} tt="uppercase">View All Logs</Text>
-                     <IconArrowUpRight size={14} />
-                  </Group>
-               </Group>
-               
-               <Stack gap={8}>
-                  {[
-                    { time: '14:22:01', level: 'INFO', msg: "Server 'Survival-Main-01' backup completed successfully." },
-                    { time: '14:18:45', level: 'WARN', msg: "Memory pressure detected on 'Factions-S3-War'. Scaling allocated RAM." },
-                    { time: '14:15:10', level: 'INFO', msg: "User 'admin' changed permissions for 'Survival-Main-01'." },
-                  ].map((log, i) => (
-                    <Group key={i} gap="md" wrap="nowrap">
-                       <Text size="xs" c="dark.3" fw={700} style={{ fontFamily: 'monospace' }}>{log.time}</Text>
-                       <Text size="xs" c={log.level === 'WARN' ? 'orange.4' : 'emerald.4'} fw={900} style={{ fontFamily: 'monospace' }}>[{log.level}]</Text>
-                       <Text size="xs" c="dark.1" style={{ fontFamily: 'monospace' }}>{log.msg}</Text>
-                    </Group>
-                  ))}
-               </Stack>
+      {/* Fleet summary (real aggregates) */}
+      {counts.total > 0 && (
+        <SimpleGrid cols={4} spacing="lg" mt={24}>
+          {[
+            { label: 'Total Nodes', value: counts.total, color: 'dark.0', icon: IconDatabase },
+            { label: 'Running', value: counts.running, color: 'emerald.4', icon: IconActivity },
+            { label: 'Idle', value: counts.idle, color: 'dark.1', icon: IconPower },
+            { label: 'Needs Attention', value: counts.attention, color: counts.attention > 0 ? 'red.5' : 'dark.1', icon: IconShieldCheck }
+          ].map((stat) => (
+            <Card key={stat.label} p={24} bg="dark.6" radius="md">
+              <Group justify="space-between" mb="md">
+                <Text size="xs" fw={800} c="dark.2" tt="uppercase">{stat.label}</Text>
+                <ThemeIcon variant="subtle" color={stat.color}><stat.icon size={18} /></ThemeIcon>
+              </Group>
+              <Text fw={900} size="2rem" c={stat.color}>{stat.value}</Text>
             </Card>
-         </Grid.Col>
-
-         <Grid.Col span={4}>
-            <Card p={24} bg="dark.6" radius="md">
-               <Group justify="space-between" mb="xl">
-                  <Text fw={900} size="md">Global Health</Text>
-                  <ThemeIcon variant="subtle" color="emerald.4"><IconActivity size={18} /></ThemeIcon>
-               </Group>
-               <Text size="xs" c="dark.2" mb="xl">Aggregate metrics across all clusters</Text>
-               
-               <Stack gap="lg">
-                  <Box>
-                     <Group justify="space-between" mb={4}>
-                        <Text size="xs" fw={700} c="dark.1" tt="uppercase">Node Stability</Text>
-                        <Text size="xs" fw={800} c="emerald.4">99.98%</Text>
-                     </Group>
-                     <Progress value={99} color="emerald.4" size="xs" radius="xl" />
-                  </Box>
-                  <Box>
-                     <Group justify="space-between" mb={4}>
-                        <Text size="xs" fw={700} c="dark.1" tt="uppercase">Network Load</Text>
-                        <Text size="xs" fw={800} c="emerald.4">42%</Text>
-                     </Group>
-                     <Progress value={42} color="emerald.4" size="xs" radius="xl" />
-                  </Box>
-
-                  <Box p="md" bg="dark.8" mt="xl" style={{ borderRadius: 8 }}>
-                     <Group gap="sm">
-                        <IconShieldCheck size={18} color="var(--mantine-color-emerald-4)" />
-                        <Box>
-                           <Text size="xs" fw={800} tt="uppercase" c="dark.1">Security Shield</Text>
-                           <Text size="xs" fw={800} c="emerald.4">Encrypted & Active</Text>
-                        </Box>
-                     </Group>
-                  </Box>
-               </Stack>
-            </Card>
-         </Grid.Col>
-      </Grid>
+          ))}
+        </SimpleGrid>
+      )}
     </Stack>
   )
 }

@@ -1,8 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { 
-  Title, TextInput, Select, NumberInput, Button, 
-  Stack, Box, Group, Text, Loader, Badge, 
-  UnstyledButton, Slider, Checkbox, 
+  Title, TextInput, Select, NumberInput, Button,
+  Stack, Box, Group, Text, Loader, Badge,
+  UnstyledButton, Slider, Checkbox, Switch,
   SimpleGrid, ThemeIcon, ScrollArea, Card
 } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
@@ -27,9 +27,19 @@ const MC_VERSIONS = [
   '1.20.4', '1.20.1', '1.19.4', '1.19.2', '1.18.2', '1.16.5'
 ]
 
-const ENGINES = [
+interface EngineOption {
+  id: string
+  name: string
+  description: string
+  icon: typeof IconBox
+  recommended?: boolean
+  highlight?: boolean
+  soon?: boolean
+}
+
+const ENGINES: EngineOption[] = [
   { id: '', name: 'Vanilla', description: 'The pure Minecraft experience. Stable, official, and straightforward.', icon: IconBox, recommended: true },
-  { id: 'paper', name: 'Spigot / Paper', description: 'High performance with plugin support. Industry standard.', icon: IconBolt, highlight: true },
+  { id: 'paper', name: 'Spigot / Paper', description: 'High performance with plugin support. Plugin management is on the roadmap.', icon: IconBolt, soon: true },
   { id: 'neoforge', name: 'NeoForge', description: 'The modern, performance-first fork of Forge. Optimized for the latest versions.', icon: IconRocket, highlight: true },
   { id: 'forge', name: 'Forge', description: 'The classic modding engine. Supports the widest array of complex modpacks.', icon: IconSettings },
   { id: 'fabric', name: 'Fabric', description: 'Lightweight, modular, and extremely fast. Ideal for modern technical play.', icon: IconRocket },
@@ -54,7 +64,9 @@ function CreateServerPage() {
     minecraftVersion: '1.21.4',
     port: 25565,
     minRam: '2G',
-    maxRam: '4G'
+    maxRam: '4G',
+    motd: '',
+    autoStart: false
   })
 
   const [selectedLoader, setSelectedLoader] = useState<string>('')
@@ -205,6 +217,8 @@ function CreateServerPage() {
                      <TextInput
                         placeholder="A brief broadcast for the server browser..."
                         styles={{ input: { height: 80, backgroundColor: 'var(--mantine-color-dark-8)', border: '1px solid var(--mantine-color-dark-5)' } }}
+                        value={form.motd || ''}
+                        onChange={(e) => setForm({ ...form, motd: e.target.value })}
                      />
                   </Box>
                 </Stack>
@@ -214,21 +228,24 @@ function CreateServerPage() {
                 <Stack gap={40} pb="xl">
                    <SimpleGrid cols={2} spacing="lg">
                       {ENGINES.map(engine => (
-                        <Card 
-                          key={engine.id} 
-                          p="lg" 
+                        <Card
+                          key={engine.id}
+                          p="lg"
                           onClick={() => {
+                            if (engine.soon) return
                             setSelectedLoader(engine.id)
                             setSelectedLoaderVersion('')
                           }}
                           style={{
-                            cursor: 'pointer',
+                            cursor: engine.soon ? 'not-allowed' : 'pointer',
+                            opacity: engine.soon ? 0.5 : 1,
                             backgroundColor: selectedLoader === engine.id ? 'transparent' : 'var(--mantine-color-dark-8)',
                             border: `2px solid ${selectedLoader === engine.id ? 'var(--mantine-color-emerald-4)' : 'transparent'}`,
                             transition: 'all 0.2s ease',
                             position: 'relative'
                           }}
                         >
+                           {engine.soon && <Badge variant="filled" color="dark.4" c="dark.0" size="xs" radius="sm" style={{ position: 'absolute', top: 12, right: 12 }}>COMING SOON</Badge>}
                            {engine.recommended && <Badge variant="filled" color="emerald.9" c="emerald.4" size="xs" radius="sm" style={{ position: 'absolute', top: 12, right: 12 }}>RECOMMENDED</Badge>}
                            {selectedLoader === engine.id && <Box style={{ position: 'absolute', top: 12, right: 12 }}><IconCheck size={18} color="var(--mantine-color-emerald-4)" /></Box>}
                            <ThemeIcon 
@@ -320,12 +337,17 @@ function CreateServerPage() {
                         />
                      </Box>
                      <Card p="md" bg="dark.8" style={{ alignSelf: 'stretch', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <Group justify="space-between">
+                        <Group justify="space-between" wrap="nowrap">
                            <Box>
                               <Text size="xs" fw={800} c="white">Auto-Restart</Text>
                               <Text size="xs" c="dark.2">Recover on crash</Text>
                            </Box>
-                           <IconBolt size={20} color="var(--mantine-color-emerald-4)" fill="currentColor" />
+                           <Switch
+                              checked={!!form.autoStart}
+                              onChange={(e) => setForm({ ...form, autoStart: e.currentTarget.checked })}
+                              color="emerald.4"
+                              size="md"
+                           />
                         </Group>
                      </Card>
                   </Group>
