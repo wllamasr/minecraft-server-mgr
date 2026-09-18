@@ -102,6 +102,7 @@ src/
 - [Specification](docs/SPEC.md) — functional spec, data model, and user flows.
 - [IPC contract](docs/IPC.md) — every channel and event between main and renderer.
 - [Remote daemon (RFC)](docs/DAEMON.md) — design for managing servers on remote hosts.
+- [Daemon (`daemon/`)](daemon/README.md) — the Go agent (Phase B MVP): build, run, and test it.
 - [Design system](DESIGN.md) — the "Command Core" visual language.
 - [Contributing](CONTRIBUTING.md) — how to set up, test, and submit changes.
 

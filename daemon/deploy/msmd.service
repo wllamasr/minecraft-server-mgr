@@ -1,0 +1,25 @@
+[Unit]
+Description=Minecraft Server Manager daemon (msmd)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=msmd
+Group=msmd
+# Java must be on PATH (or set MSMD_JAVA to an absolute path).
+Environment=MSMD_DATA=/var/lib/msmd
+Environment=MSMD_ADDR=:8443
+ExecStart=/usr/local/bin/msmd
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/msmd
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

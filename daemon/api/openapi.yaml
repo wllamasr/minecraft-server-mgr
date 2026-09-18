@@ -1,0 +1,93 @@
+openapi: 3.0.3
+info:
+  title: msmd — Minecraft Server Manager daemon
+  version: 0.1.0
+  description: >
+    HTTP + Server-Sent-Events API for managing Minecraft servers on a remote
+    host. All endpoints are served over TLS. Every route except /v1/health and
+    /v1/pair requires a bearer token.
+servers:
+  - url: https://{host}:8443
+    variables:
+      host:
+        default: localhost
+security:
+  - bearerAuth: []
+paths:
+  /v1/health:
+    get:
+      summary: Liveness probe (no auth)
+      security: []
+      responses:
+        "200": { description: OK }
+  /v1/pair:
+    post:
+      summary: Exchange the pairing token for the API token + host info (no auth header)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { token: { type: string } }
+      responses:
+        "200": { description: Paired }
+        "401": { description: Invalid pairing token }
+  /v1/info:
+    get:
+      summary: Host info (os, arch, java, agent version)
+      responses: { "200": { description: OK } }
+  /v1/servers:
+    get:
+      summary: List servers
+      responses: { "200": { description: OK } }
+    post:
+      summary: Create a server (provisions asynchronously)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, minecraftVersion]
+              properties:
+                name: { type: string }
+                minecraftVersion: { type: string }
+                port: { type: integer }
+                minRam: { type: string, example: "1G" }
+                maxRam: { type: string, example: "2G" }
+                autoStart: { type: boolean }
+      responses:
+        "201": { description: Created }
+        "400": { description: Invalid input }
+  /v1/servers/{id}:
+    get:
+      summary: Get a server
+      responses: { "200": { description: OK }, "404": { description: Not found } }
+    delete:
+      summary: Delete a server
+      responses: { "204": { description: Deleted } }
+  /v1/servers/{id}/start:
+    post: { summary: Start a server, responses: { "202": { description: Accepted } } }
+  /v1/servers/{id}/stop:
+    post: { summary: Stop a server, responses: { "202": { description: Accepted } } }
+  /v1/servers/{id}/command:
+    post:
+      summary: Send a console command
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { command: { type: string } } }
+      responses: { "200": { description: OK } }
+  /v1/servers/{id}/logs:
+    get: { summary: Buffered log history, responses: { "200": { description: OK } } }
+  /v1/servers/{id}/console:
+    get: { summary: "Live console stream (SSE): history then live lines", responses: { "200": { description: text/event-stream } } }
+  /v1/events:
+    get: { summary: "Host event stream (SSE): status changes", responses: { "200": { description: text/event-stream } } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

@@ -1,9 +1,13 @@
 # Remote Daemon — Design Document
 
-> Status: **Design / RFC.** No code yet. This document proposes how Minecraft
-> Server Manager (MSM) will manage servers running on *remote* hosts through a
-> lightweight agent ("the daemon"), in addition to the local servers it manages
-> today.
+> Status: **Design / RFC.** This document proposes how Minecraft Server Manager
+> (MSM) will manage servers running on *remote* hosts through a lightweight agent
+> ("the daemon"), in addition to the local servers it manages today.
+>
+> **Phase B (daemon MVP) is implemented** in [`../daemon/`](../daemon/): a Go
+> agent with server lifecycle, live console over TLS, and token auth. See
+> [daemon/README.md](../daemon/README.md) to build, run, and test it. The
+> manager-side integration (Phases A/C) is still to come.
 
 ## 1. Motivation
 
@@ -195,6 +199,12 @@ Rationale: REST is trivially debuggable (curl, logs) and maps 1:1 onto the exist
 need. gRPC (bidirectional streaming, codegen) is stronger and typed but heavier to
 operate and debug; it is a **v2** option, not needed for the MVP.
 
+> **Implementation note (MVP):** the daemon streams with **Server-Sent Events**
+> (`text/event-stream`) rather than WebSocket, keeping it standard-library-only
+> and dependency-free. Console input (stdin) is a plain `POST .../command`.
+> Server→client streaming is the only direction that needs pushing, so SSE is a
+> good fit; WebSocket can replace it later if bidirectional streaming is wanted.
+
 ### 6.1 API sketch (`/v1`)
 
 | Method | Path | Purpose |
@@ -283,7 +293,7 @@ daemon cryptographically, replacing/augmenting the bearer token.
 | Phase | Scope | Ships |
 | --- | --- | --- |
 | **A** | Manager: extract `ServerProvider`; wrap current services in `LocalProvider`; add `hosts` table with a seeded `local` host. | No user-visible change. |
-| **B** | Daemon MVP (Go): health, info, server CRUD + lifecycle, console WS, TLS + bootstrap/token auth, systemd install script. | A daemon you can pair and run servers on via curl. |
+| **B** ✅ | Daemon MVP (Go): health, info, server CRUD + lifecycle, console stream (SSE), TLS + token auth, systemd install script. | **Done** — see [`../daemon/`](../daemon/); pair and run servers via curl. |
 | **C** | Manager: `RemoteProvider` + "Add Remote Host" UI + host switcher + secret storage. | Manage a remote server end-to-end. |
 | **D** | Parity: mods, properties editor, telemetry, crash auto-restart over the wire. | Feature parity with local. |
 | **E** | Hardening: mTLS, token rotation, daemon self-update, release CI for daemon binaries. | Production-ready. |

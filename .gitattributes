@@ -1,0 +1,9 @@
+# Keep line endings deterministic across Windows/Linux. Shell scripts and Go
+# files must be LF so they run/build correctly on the Linux hosts the daemon
+# and CI target.
+*.sh      text eol=lf
+*.go      text eol=lf
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.mod     text eol=lf
+Makefile  text eol=lf
