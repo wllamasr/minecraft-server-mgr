@@ -8,16 +8,24 @@ only), so it builds to a single static binary and cross-compiles trivially.
 
 ## What works today
 
-- Create a server (async provisioning: downloads the vanilla jar from Mojang,
-  writes `server.properties` + `eula.txt`), start, stop, delete, list, get.
-- Live console: log history + streaming via Server-Sent Events; send commands.
-- Crash **auto-restart** (capped at 3/min) when `autoStart` is set.
-- TLS with a self-signed cert generated on first run; **bearer-token** auth with
-  a token printed once for pairing.
+The daemon is self-sufficient — it handles everything a Minecraft server needs
+on the host:
 
-**Not yet** (see the RFC): mod loaders / modpacks, telemetry, mods, CurseForge,
-mutual TLS. The desktop manager's remote-host UI (Phase C) is also still to come,
-so for now you drive the daemon with `curl` or the smoke script.
+- **Java, automatically.** Detects installed JDKs (JAVA_HOME, PATH, common
+  locations); if none matches the server's Minecraft version it downloads and
+  installs an Eclipse Temurin JDK (8/17/21) into its data dir. No manual setup.
+- **Servers.** Create (async provisioning), start, stop, delete, list, get, with
+  a live console (history + SSE) and command input. Crash **auto-restart**
+  (capped 3/min) when `autoStart` is set.
+- **Mod loaders.** Fabric, Quilt, Forge, NeoForge — installed with each
+  project's official installer; the right launch command is used per loader.
+- **Modpacks.** Deploy a Modrinth `.mrpack` (pass its URL): the daemon installs
+  the exact loader it pins, downloads the server files, and applies overrides.
+- **Security.** TLS with a self-signed cert (pinned by the manager, TOFU) and
+  **bearer-token** auth. Get/rotate the token with `msmd auth`.
+
+**Not yet** (see the RFC): telemetry, CurseForge modpacks, mutual TLS. The
+desktop manager's remote-host UI is landing separately (Phase A/C).
 
 ## Build & run
 
@@ -25,8 +33,18 @@ Requires Go 1.22+.
 
 ```bash
 make build            # -> ./msmd (static binary)
-./msmd -data ./msmd-data          # listens on :8443, prints the pairing token
+./msmd -data ./msmd-data          # serve: listens on :8443, prints the pairing token
 # or: make run
+```
+
+Subcommands:
+
+```bash
+msmd serve            # run the daemon (default when no subcommand is given)
+msmd auth             # print the pairing token + certificate fingerprint
+msmd auth --token     # print just the raw token (scriptable)
+msmd auth --rotate    # generate a new token, invalidating the old one
+msmd version
 ```
 
 Cross-compile release binaries:

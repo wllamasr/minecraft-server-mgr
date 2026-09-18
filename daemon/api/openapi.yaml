@@ -36,8 +36,15 @@ paths:
         "401": { description: Invalid pairing token }
   /v1/info:
     get:
-      summary: Host info (os, arch, java, agent version)
+      summary: Host info (os, arch, detected Java installations, agent version)
       responses: { "200": { description: OK } }
+  /v1/loaders/{loader}/versions:
+    get:
+      summary: List available versions for a mod loader (fabric|quilt|forge|neoforge)
+      parameters:
+        - { name: loader, in: path, required: true, schema: { type: string } }
+        - { name: mc, in: query, required: false, schema: { type: string } }
+      responses: { "200": { description: OK }, "400": { description: Unknown loader } }
   /v1/servers:
     get:
       summary: List servers
@@ -54,10 +61,21 @@ paths:
               properties:
                 name: { type: string }
                 minecraftVersion: { type: string }
+                modLoader: { type: string, description: "fabric|quilt|forge|neoforge" }
+                modLoaderVersion: { type: string }
                 port: { type: integer }
                 minRam: { type: string, example: "1G" }
                 maxRam: { type: string, example: "2G" }
                 autoStart: { type: boolean }
+                modpack:
+                  type: object
+                  description: Deploy from a Modrinth modpack instead of a plain server.
+                  properties:
+                    source: { type: string, example: modrinth }
+                    projectId: { type: string }
+                    versionId: { type: string }
+                    mrpackUrl: { type: string }
+                    name: { type: string }
       responses:
         "201": { description: Created }
         "400": { description: Invalid input }

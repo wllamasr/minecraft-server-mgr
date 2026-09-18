@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/modpack"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
 )
 
@@ -56,9 +58,37 @@ func (m *Manager) provision(s store.Server) {
 	}
 
 	emit("Ensuring a compatible Java runtime is installed...", "INFO")
-	if _, err := m.java.Ensure(s.MinecraftVersion, func(line string) { emit(line, "INFO") }); err != nil {
+	javaPath, err := m.java.Ensure(s.MinecraftVersion, func(line string) { emit(line, "INFO") })
+	if err != nil {
 		m.failProvision(s.ID, err)
 		return
+	}
+
+	if s.ModpackURL != "" {
+		emit("Applying modpack "+s.ModpackName+"...", "INFO")
+		res, err := modpack.Apply(s.Dir, s.ModpackURL, javaPath, func(line string) { emit(line, "INFO") })
+		if err != nil {
+			m.failProvision(s.ID, err)
+			return
+		}
+		// The pack pins the exact MC version and loader; persist them.
+		if res.MinecraftVersion != "" {
+			s.MinecraftVersion = res.MinecraftVersion
+		}
+		s.ModLoader = res.Loader
+		s.ModLoaderVersion = res.LoaderVersion
+		s.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		if err := m.store.Put(s); err != nil {
+			m.failProvision(s.ID, err)
+			return
+		}
+	} else if s.ModLoader != "" {
+		emit(fmt.Sprintf("Installing %s %s...", s.ModLoader, s.ModLoaderVersion), "INFO")
+		if err := loader.Install(loader.Type(s.ModLoader), s.ModLoaderVersion, s.MinecraftVersion, s.Dir, javaPath,
+			func(line string) { emit(line, "INFO") }); err != nil {
+			m.failProvision(s.ID, err)
+			return
+		}
 	}
 
 	m.clearProvisioning(s.ID)

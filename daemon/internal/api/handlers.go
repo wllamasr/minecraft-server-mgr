@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/server"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
 )
@@ -52,6 +53,20 @@ func (s *Server) info() map[string]any {
 		"java":         s.mgr.JavaInstallations(),
 		"serversRoot":  s.cfg.ServersRoot,
 	}
+}
+
+func (s *Server) handleLoaderVersions(w http.ResponseWriter, r *http.Request) {
+	l := r.PathValue("loader")
+	if !loader.Valid(l) {
+		writeError(w, http.StatusBadRequest, "unknown mod loader")
+		return
+	}
+	versions, err := loader.Versions(loader.Type(l), r.URL.Query().Get("mc"))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, versions)
 }
 
 func (s *Server) handleList(w http.ResponseWriter, _ *http.Request) {

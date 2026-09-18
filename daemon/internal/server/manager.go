@@ -18,6 +18,7 @@ import (
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/config"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/console"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/java"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
 )
 
@@ -42,13 +43,24 @@ const (
 
 // CreateInput describes a new server request.
 type CreateInput struct {
-	Name             string `json:"name"`
-	MinecraftVersion string `json:"minecraftVersion"`
-	ModLoader        string `json:"modLoader,omitempty"`
-	Port             int    `json:"port,omitempty"`
-	MinRAM           string `json:"minRam,omitempty"`
-	MaxRAM           string `json:"maxRam,omitempty"`
-	AutoStart        bool   `json:"autoStart,omitempty"`
+	Name             string      `json:"name"`
+	MinecraftVersion string      `json:"minecraftVersion"`
+	ModLoader        string      `json:"modLoader,omitempty"`
+	ModLoaderVersion string      `json:"modLoaderVersion,omitempty"`
+	Port             int         `json:"port,omitempty"`
+	MinRAM           string      `json:"minRam,omitempty"`
+	MaxRAM           string      `json:"maxRam,omitempty"`
+	AutoStart        bool        `json:"autoStart,omitempty"`
+	Modpack          *ModpackRef `json:"modpack,omitempty"`
+}
+
+// ModpackRef points at a Modrinth modpack to deploy from.
+type ModpackRef struct {
+	Source    string `json:"source"`
+	ProjectID string `json:"projectId"`
+	VersionID string `json:"versionId"`
+	MrpackURL string `json:"mrpackUrl"`
+	Name      string `json:"name"`
 }
 
 // View is a server record plus its runtime status and PID.
@@ -148,7 +160,12 @@ func (m *Manager) Create(in CreateInput) (store.Server, error) {
 		return store.Server{}, errors.New("minecraftVersion is required")
 	}
 	if in.ModLoader != "" {
-		return store.Server{}, errors.New("mod loaders are not supported by the daemon yet (vanilla only)")
+		if !loader.Valid(in.ModLoader) {
+			return store.Server{}, fmt.Errorf("unknown mod loader: %s", in.ModLoader)
+		}
+		if in.ModLoaderVersion == "" {
+			return store.Server{}, fmt.Errorf("modLoaderVersion is required for %s", in.ModLoader)
+		}
 	}
 
 	dir := filepath.Join(m.cfg.ServersRoot, sanitizeName(in.Name))
@@ -165,12 +182,21 @@ func (m *Manager) Create(in CreateInput) (store.Server, error) {
 		Name:             in.Name,
 		Dir:              dir,
 		MinecraftVersion: in.MinecraftVersion,
+		ModLoader:        in.ModLoader,
+		ModLoaderVersion: in.ModLoaderVersion,
 		Port:             orInt(in.Port, 25565),
 		MinRAM:           orStr(in.MinRAM, "1G"),
 		MaxRAM:           orStr(in.MaxRAM, "2G"),
 		AutoStart:        in.AutoStart,
 		CreatedAt:        now,
 		UpdatedAt:        now,
+	}
+	if in.Modpack != nil {
+		s.ModpackSource = in.Modpack.Source
+		s.ModpackProjectID = in.Modpack.ProjectID
+		s.ModpackVersionID = in.Modpack.VersionID
+		s.ModpackName = in.Modpack.Name
+		s.ModpackURL = in.Modpack.MrpackURL
 	}
 	if err := m.store.Put(s); err != nil {
 		return store.Server{}, err
@@ -213,9 +239,7 @@ func (m *Manager) Start(id string) error {
 		return err
 	}
 
-	args := []string{"-Xms" + s.MinRAM, "-Xmx" + s.MaxRAM, "-jar", "server.jar", "nogui"}
-	cmd := exec.Command(javaPath, args...)
-	cmd.Dir = s.Dir
+	cmd := buildLaunchCmd(s, javaPath)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -432,4 +456,46 @@ func orStr(v, def string) string {
 		return def
 	}
 	return v
+}
+
+// buildLaunchCmd constructs the process launch command for a server, using the
+// right entrypoint for its loader and putting the resolved Java on PATH (so a
+// Forge/NeoForge run.sh finds it).
+func buildLaunchCmd(s store.Server, javaPath string) *exec.Cmd {
+	dir := s.Dir
+	ram := []string{"-Xms" + s.MinRAM, "-Xmx" + s.MaxRAM}
+	var cmd *exec.Cmd
+
+	switch loader.Type(s.ModLoader) {
+	case loader.Forge, loader.NeoForge:
+		_ = os.WriteFile(filepath.Join(dir, "user_jvm_args.txt"),
+			[]byte("-Xms"+s.MinRAM+"\n-Xmx"+s.MaxRAM+"\n"), 0o640)
+		if fileExists(filepath.Join(dir, "run.sh")) {
+			cmd = exec.Command("sh", "run.sh", "nogui")
+		} else {
+			cmd = exec.Command(javaPath, append(ram, "-jar", "server.jar", "nogui")...)
+		}
+	case loader.Fabric:
+		cmd = exec.Command(javaPath, append(ram, "-jar", launchJar(dir, "fabric-server-launch.jar"), "nogui")...)
+	case loader.Quilt:
+		cmd = exec.Command(javaPath, append(ram, "-jar", launchJar(dir, "quilt-server-launch.jar"), "nogui")...)
+	default:
+		cmd = exec.Command(javaPath, append(ram, "-jar", "server.jar", "nogui")...)
+	}
+
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(javaPath)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return cmd
+}
+
+func launchJar(dir, preferred string) string {
+	if fileExists(filepath.Join(dir, preferred)) {
+		return preferred
+	}
+	return "server.jar"
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }

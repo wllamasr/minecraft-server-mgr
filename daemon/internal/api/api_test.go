@@ -107,7 +107,7 @@ func TestInfoReportsAgentVersion(t *testing.T) {
 	}
 }
 
-func TestCreateRejectsModLoader(t *testing.T) {
+func TestCreateRejectsLoaderWithoutVersion(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
 
@@ -120,6 +120,23 @@ func TestCreateRejectsModLoader(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("create-with-loader status = %d, want 400", resp.StatusCode)
+		t.Fatalf("loader-without-version status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestCreateRejectsUnknownLoader(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/v1/servers",
+		strings.NewReader(`{"name":"y","minecraftVersion":"1.20.1","modLoader":"bogus","modLoaderVersion":"1"}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown-loader status = %d, want 400", resp.StatusCode)
 	}
 }

@@ -29,6 +29,12 @@ type Server struct {
 	AutoStart        bool   `json:"autoStart"`
 	CreatedAt        string `json:"createdAt"`
 	UpdatedAt        string `json:"updatedAt"`
+	// Modpack provenance (set when the server was deployed from a modpack).
+	ModpackSource    string `json:"modpackSource,omitempty"`
+	ModpackProjectID string `json:"modpackProjectId,omitempty"`
+	ModpackVersionID string `json:"modpackVersionId,omitempty"`
+	ModpackName      string `json:"modpackName,omitempty"`
+	ModpackURL       string `json:"modpackUrl,omitempty"`
 }
 
 // Store is a small, mutex-guarded, JSON-file-backed collection of servers.
