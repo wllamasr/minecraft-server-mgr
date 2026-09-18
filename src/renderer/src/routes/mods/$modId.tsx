@@ -193,7 +193,7 @@ function ModDetailPage() {
       )}
 
       {/* Main Content Split */}
-      <Grid gutter="xl" style={{ flex: 1, overflow: 'hidden' }}>
+      <Grid gap="xl" style={{ flex: 1, overflow: 'hidden' }}>
         <Grid.Col span={{ base: 12, md: 7 }} h="100%">
           <Paper p="md" radius="md" withBorder h="100%" style={{ borderColor: 'var(--mantine-color-dark-5)', display: 'flex', flexDirection: 'column' }}>
             <Title order={4} mb="sm">Description</Title>

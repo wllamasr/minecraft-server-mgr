@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { MantineProvider } from '@mantine/core'
+import { MantineProvider, v8CssVariablesResolver } from '@mantine/core'
 import { ModalsProvider } from '@mantine/modals'
 import { Notifications } from '@mantine/notifications'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -26,7 +26,11 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <MantineProvider theme={minecraftTheme} defaultColorScheme="dark">
+      <MantineProvider
+        theme={minecraftTheme}
+        defaultColorScheme="dark"
+        cssVariablesResolver={v8CssVariablesResolver}
+      >
         <ModalsProvider>
           <Notifications position="top-right" />
           <RouterProvider router={router} />
