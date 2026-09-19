@@ -25,9 +25,9 @@ import (
 
 // Installation is a discovered JDK.
 type Installation struct {
-	Path    string // path to the java binary
-	Major   int
-	Version string
+	Path    string `json:"path"` // path to the java binary
+	Major   int    `json:"major"`
+	Version string `json:"version"`
 }
 
 // RequiredMajor returns the minimum Java major version for a Minecraft version.
@@ -107,7 +107,7 @@ func (m *Manager) Detect() []Installation { return m.detect() }
 
 func (m *Manager) detect() []Installation {
 	seen := map[string]bool{}
-	var found []Installation
+	found := []Installation{} // non-nil so /v1/info reports [] rather than null
 	add := func(p string) {
 		if p == "" {
 			return
@@ -135,8 +135,19 @@ func (m *Manager) detect() []Installation {
 			continue
 		}
 		for _, e := range entries {
-			if e.IsDir() {
-				add(filepath.Join(root, e.Name(), "bin", exe))
+			if !e.IsDir() {
+				continue
+			}
+			dir := filepath.Join(root, e.Name())
+			add(filepath.Join(dir, "bin", exe))
+			// Also look one level deeper: auto-installed Temurin JDKs live at
+			// <root>/temurin-<major>/jdk-<version>/bin/java.
+			if subs, err := os.ReadDir(dir); err == nil {
+				for _, se := range subs {
+					if se.IsDir() {
+						add(filepath.Join(dir, se.Name(), "bin", exe))
+					}
+				}
 			}
 		}
 	}

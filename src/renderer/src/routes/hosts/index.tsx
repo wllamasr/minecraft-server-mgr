@@ -210,7 +210,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
             <Text fw={900} size="lg">{host.name}</Text>
             {info ? (
               <Text size="xs" c="dark.2">
-                msmd {info.agentVersion} · {info.os}/{info.arch} · Java: {info.java.length
+                msmd {info.agentVersion} · {info.os}/{info.arch} · Java: {info.java && info.java.length
                   ? info.java.map((j) => j.major).join(', ')
                   : 'auto-install on first server'}
               </Text>
