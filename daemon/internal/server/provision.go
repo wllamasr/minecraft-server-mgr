@@ -143,6 +143,11 @@ func defaultProperties(s store.Server) string {
 		"spawn-protection=16",
 		"view-distance=10",
 		"simulation-distance=10",
+		// Disable Minecraft's own Server Watchdog: our daemon already supervises the
+		// process and auto-restarts on real crashes, so the watchdog is redundant and
+		// causes false "java.lang.Error: Watchdog" kills on slow/virtualized hosts
+		// during world generation.
+		"max-tick-time=-1",
 		"",
 	}
 	return strings.Join(lines, "\n")
