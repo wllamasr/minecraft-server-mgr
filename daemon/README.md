@@ -127,6 +127,9 @@ Then point the manager at `https://<vm-ip>:8443` with the printed token.
 **Recommendation:** iterate on **WSL2** (fast, zero-cost), then do a final
 validation on a **VM/VPS** (real network + systemd) before relying on it.
 
+For a full step-by-step VM walkthrough (Multipass or Hyper-V), see
+[TESTING.md](TESTING.md).
+
 ## Testing (automated)
 
 ```bash
