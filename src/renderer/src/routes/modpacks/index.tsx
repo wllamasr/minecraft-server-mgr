@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useDebouncedValue, useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import { parseModrinthModpackSlug } from '@shared/utils/modpack'
-import type { UnifiedMod, ModLoaderType } from '@shared/types'
+import type { UnifiedMod } from '@shared/types'
 
 export const Route = createFileRoute('/modpacks/')({
   component: ModpacksPage
@@ -143,8 +143,6 @@ function ModpacksPage() {
   )
 }
 
-const VALID_LOADERS: ModLoaderType[] = ['forge', 'neoforge', 'fabric', 'quilt']
-
 function DeployModpackModal({
   mod,
   opened,
@@ -158,12 +156,18 @@ function DeployModpackModal({
   const [versionId, setVersionId] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [maxRam, setMaxRam] = useState(4)
+  const [target, setTarget] = useState('local')
   const [deploying, setDeploying] = useState(false)
 
   const { data: versions, isLoading } = useQuery({
     queryKey: ['modpackVersions', mod?.id],
     queryFn: () => window.api.getModVersions('modrinth', mod!.id),
     enabled: !!mod && opened
+  })
+
+  const { data: hosts = [] } = useQuery({
+    queryKey: ['hosts'],
+    queryFn: () => window.api.listHosts()
   })
 
   // Default the name and selected version once versions load.
@@ -183,33 +187,45 @@ function DeployModpackModal({
       notifications.show({ color: 'red', message: 'This version has no Minecraft version listed.' })
       return
     }
-    const loader = chosen.loaders.find((l) => VALID_LOADERS.includes(l as ModLoaderType)) as
-      | ModLoaderType
-      | undefined
+    // The loader (Fabric/Forge/…) is pinned by the .mrpack itself and resolved
+    // during provisioning, so we don't send modLoader here (sending it without a
+    // version would be rejected).
+    const input = {
+      name: name.trim() || mod.name,
+      minecraftVersion: mcVersion,
+      minRam: `${Math.max(1, Math.floor(maxRam / 2))}G`,
+      maxRam: `${maxRam}G`,
+      modpack: {
+        source: 'modrinth',
+        projectId: mod.id,
+        versionId: chosen.id,
+        mrpackUrl: chosen.downloadUrl,
+        name: mod.name
+      }
+    }
 
     setDeploying(true)
     try {
-      const server = await window.api.createServer({
-        name: name.trim() || mod.name,
-        minecraftVersion: mcVersion,
-        modLoader: loader,
-        minRam: `${Math.max(1, Math.floor(maxRam / 2))}G`,
-        maxRam: `${maxRam}G`,
-        modpack: {
-          source: 'modrinth',
-          projectId: mod.id,
-          versionId: chosen.id,
-          mrpackUrl: chosen.downloadUrl,
-          name: mod.name
-        }
-      })
-      notifications.show({
-        color: 'blue',
-        title: 'Deploying modpack',
-        message: `Provisioning "${server.name}" — follow the console for live progress.`
-      })
-      onClose()
-      navigate({ to: '/servers/$serverId', params: { serverId: server.id } })
+      if (target === 'local') {
+        const server = await window.api.createServer(input as never)
+        notifications.show({
+          color: 'blue',
+          title: 'Deploying modpack (local)',
+          message: `Provisioning "${server.name}" — follow the console for live progress.`
+        })
+        onClose()
+        navigate({ to: '/servers/$serverId', params: { serverId: server.id } })
+      } else {
+        const host = hosts.find((h) => h.id === target)
+        await window.api.createRemoteServer(target, input as never)
+        notifications.show({
+          color: 'blue',
+          title: 'Deploying modpack (remote)',
+          message: `Provisioning "${input.name}" on ${host?.name ?? 'the host'} — open it in Remote Hosts.`
+        })
+        onClose()
+        navigate({ to: '/hosts' })
+      }
     } catch (err) {
       notifications.show({ color: 'red', title: 'Deploy failed', message: (err as Error).message })
     } finally {
@@ -227,6 +243,16 @@ function DeployModpackModal({
             label="Server name"
             value={name}
             onChange={(e) => setName(e.currentTarget.value)}
+          />
+          <Select
+            label="Deploy to"
+            description="This computer, or a paired remote host (daemon)"
+            data={[
+              { value: 'local', label: 'This computer (local)' },
+              ...hosts.map((h) => ({ value: h.id, label: `${h.name} (remote)` }))
+            ]}
+            value={target}
+            onChange={(v) => setTarget(v || 'local')}
           />
           <Select
             label="Modpack version"
