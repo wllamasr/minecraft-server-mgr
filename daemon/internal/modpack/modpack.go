@@ -8,12 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/httpx"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
 )
 
@@ -45,7 +44,7 @@ type Result struct {
 func Apply(serverDir, mrpackURL, javaPath string, emit func(string)) (Result, error) {
 	mrpackPath := filepath.Join(serverDir, "modpack.mrpack")
 	emit("Downloading modpack index (.mrpack)...")
-	if err := download(mrpackURL, mrpackPath); err != nil {
+	if err := httpx.Download(mrpackURL, mrpackPath); err != nil {
 		return Result{}, err
 	}
 	defer os.Remove(mrpackPath)
@@ -95,7 +94,7 @@ func Apply(serverDir, mrpackURL, javaPath string, emit func(string)) (Result, er
 			continue
 		}
 		emit(fmt.Sprintf("  [%d/%d] %s", i+1, len(files), f.Path))
-		if err := download(f.Downloads[0], dest); err != nil {
+		if err := httpx.Download(f.Downloads[0], dest); err != nil {
 			return Result{}, err
 		}
 		if strings.HasPrefix(f.Path, "mods/") {
@@ -181,28 +180,6 @@ func extractFile(f *zip.File, dest string) error {
 	}
 	defer out.Close()
 	_, err = io.Copy(out, rc)
-	return err
-}
-
-func download(url, dest string) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
-		return err
-	}
-	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
-	}
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, resp.Body)
 	return err
 }
 

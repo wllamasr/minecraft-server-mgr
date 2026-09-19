@@ -5,15 +5,14 @@ package loader
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/httpx"
 )
 
 // Type is a supported mod loader.
@@ -82,7 +81,7 @@ func fabricLoaderVersions() ([]Version, error) {
 		Version string `json:"version"`
 		Stable  bool   `json:"stable"`
 	}
-	if err := getJSON("https://meta.fabricmc.net/v2/versions/loader", &data); err != nil {
+	if err := httpx.GetJSON("https://meta.fabricmc.net/v2/versions/loader", &data); err != nil {
 		return nil, err
 	}
 	out := make([]Version, 0, 20)
@@ -101,7 +100,7 @@ func installFabric(loaderVersion, mcVersion, dir, java string, emit func(string)
 		Version string `json:"version"`
 		Stable  bool   `json:"stable"`
 	}
-	if err := getJSON("https://meta.fabricmc.net/v2/versions/installer", &installers); err != nil {
+	if err := httpx.GetJSON("https://meta.fabricmc.net/v2/versions/installer", &installers); err != nil {
 		return err
 	}
 	if len(installers) == 0 {
@@ -120,7 +119,7 @@ func installFabric(loaderVersion, mcVersion, dir, java string, emit func(string)
 	}
 
 	installer := filepath.Join(dir, "fabric-installer.jar")
-	if err := download(url, installer); err != nil {
+	if err := httpx.Download(url, installer); err != nil {
 		return err
 	}
 	defer os.Remove(installer)
@@ -136,7 +135,7 @@ func quiltLoaderVersions() ([]Version, error) {
 	var data []struct {
 		Version string `json:"version"`
 	}
-	if err := getJSON("https://meta.quiltmc.org/v3/versions/loader", &data); err != nil {
+	if err := httpx.GetJSON("https://meta.quiltmc.org/v3/versions/loader", &data); err != nil {
 		return nil, err
 	}
 	out := make([]Version, 0, 20)
@@ -151,7 +150,7 @@ func quiltLoaderVersions() ([]Version, error) {
 
 func installQuilt(loaderVersion, mcVersion, dir, java string, emit func(string)) error {
 	installer := filepath.Join(dir, "quilt-installer.jar")
-	if err := download("https://quiltmc.org/api/v1/download-latest-installer/java-universal", installer); err != nil {
+	if err := httpx.Download("https://quiltmc.org/api/v1/download-latest-installer/java-universal", installer); err != nil {
 		return err
 	}
 	defer os.Remove(installer)
@@ -167,7 +166,7 @@ func forgeVersions(mcVersion string) ([]Version, error) {
 	var data struct {
 		Promos map[string]string `json:"promos"`
 	}
-	if err := getJSON("https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json", &data); err != nil {
+	if err := httpx.GetJSON("https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json", &data); err != nil {
 		return nil, err
 	}
 	var out []Version
@@ -184,7 +183,7 @@ func installForge(forgeVersion, mcVersion, dir, java string, emit func(string)) 
 	full := mcVersion + "-" + forgeVersion
 	url := fmt.Sprintf("https://maven.minecraftforge.net/net/minecraftforge/forge/%s/forge-%s-installer.jar", full, full)
 	installer := filepath.Join(dir, "forge-installer.jar")
-	if err := download(url, installer); err != nil {
+	if err := httpx.Download(url, installer); err != nil {
 		return err
 	}
 	defer os.Remove(installer)
@@ -200,7 +199,7 @@ var neoVersionRe = regexp.MustCompile(`<version>([^<]+)</version>`)
 func neoforgeVersions(mcVersion string) ([]Version, error) {
 	// MC 1.21.4 -> NeoForge 21.4.x
 	prefix := neoPrefix(mcVersion)
-	body, err := getText("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
+	body, err := httpx.GetText("https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml")
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +221,7 @@ func neoforgeVersions(mcVersion string) ([]Version, error) {
 func installNeoForge(neoVersion, dir, java string, emit func(string)) error {
 	url := fmt.Sprintf("https://maven.neoforged.net/releases/net/neoforged/neoforge/%s/neoforge-%s-installer.jar", neoVersion, neoVersion)
 	installer := filepath.Join(dir, "neoforge-installer.jar")
-	if err := download(url, installer); err != nil {
+	if err := httpx.Download(url, installer); err != nil {
 		return err
 	}
 	defer os.Remove(installer)
@@ -266,60 +265,6 @@ func runJar(java, jar, dir string, emit func(string), args ...string) error {
 		return fmt.Errorf("installer failed: %w", err)
 	}
 	return nil
-}
-
-func getJSON(url string, target any) error {
-	body, err := get(url)
-	if err != nil {
-		return err
-	}
-	defer body.Close()
-	return json.NewDecoder(body).Decode(target)
-}
-
-func getText(url string) (string, error) {
-	body, err := get(url)
-	if err != nil {
-		return "", err
-	}
-	defer body.Close()
-	b, err := io.ReadAll(body)
-	return string(b), err
-}
-
-func get(url string) (io.ReadCloser, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
-	}
-	return resp.Body, nil
-}
-
-func download(url, dest string) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
-		return err
-	}
-	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
-	}
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = io.Copy(out, resp.Body)
-	return err
 }
 
 func neoPrefix(mcVersion string) string {

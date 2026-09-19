@@ -3,16 +3,14 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/httpx"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/modpack"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
@@ -104,7 +102,7 @@ func (m *Manager) failProvision(id string, err error) {
 
 func downloadVanillaServer(mcVersion, dest string) error {
 	var manifest versionManifest
-	if err := getJSON(versionManifestURL, &manifest); err != nil {
+	if err := httpx.GetJSON(versionManifestURL, &manifest); err != nil {
 		return err
 	}
 	var metaURL string
@@ -119,54 +117,13 @@ func downloadVanillaServer(mcVersion, dest string) error {
 	}
 
 	var meta versionMeta
-	if err := getJSON(metaURL, &meta); err != nil {
+	if err := httpx.GetJSON(metaURL, &meta); err != nil {
 		return err
 	}
 	if meta.Downloads.Server.URL == "" {
 		return fmt.Errorf("no server download available for Minecraft %s", mcVersion)
 	}
-	return downloadFile(meta.Downloads.Server.URL, dest)
-}
-
-func getJSON(url string, target any) error {
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
-	}
-	return json.NewDecoder(resp.Body).Decode(target)
-}
-
-func downloadFile(url, dest string) error {
-	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
-		return err
-	}
-	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
-	}
-	tmp := dest + ".part"
-	out, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, resp.Body); err != nil {
-		out.Close()
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, dest)
+	return httpx.Download(meta.Downloads.Server.URL, dest)
 }
 
 func defaultProperties(s store.Server) string {

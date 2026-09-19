@@ -10,7 +10,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,7 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
+
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/httpx"
 )
 
 // Installation is a discovered JDK.
@@ -217,15 +217,6 @@ func (m *Manager) install(major int, emit func(string)) (string, error) {
 	)
 
 	emitf(emit, "Downloading JDK %d (%s/%s) from Eclipse Temurin...", major, osName, arch)
-	client := &http.Client{Timeout: 15 * time.Minute}
-	resp, err := client.Get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Temurin download: HTTP %d", resp.StatusCode)
-	}
 
 	dest := filepath.Join(m.dir, fmt.Sprintf("temurin-%d", major))
 	_ = os.RemoveAll(dest)
@@ -233,11 +224,23 @@ func (m *Manager) install(major int, emit func(string)) (string, error) {
 		return "", err
 	}
 
+	archive := filepath.Join(dest, "download.archive")
+	if err := httpx.Download(url, archive); err != nil {
+		return "", err
+	}
+	defer os.Remove(archive)
+
+	f, err := os.Open(archive)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
 	var top string
 	if runtime.GOOS == "windows" {
-		top, err = extractZip(resp.Body, dest)
+		top, err = extractZip(f, dest)
 	} else {
-		top, err = extractTarGz(resp.Body, dest)
+		top, err = extractTarGz(f, dest)
 	}
 	if err != nil {
 		return "", err
