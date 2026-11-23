@@ -281,6 +281,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
                 <Text size="xs" c="dark.2">
                   {engineLabel(s.modLoader)} · MC {s.minecraftVersion} · Port {s.port} · {s.maxRam}
                   {s.restartSchedule ? ` · restarts daily at ${s.restartSchedule}` : ''}
+                  {s.backupSchedule ? ` · backed up daily at ${s.backupSchedule}` : ''}
                   {s.operation ? ` · ${s.operation.kind === 'backup' ? 'backing up' : 'restoring a backup'}…` : ''}
                 </Text>
               </Box>
@@ -317,7 +318,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
                 </ActionIcon>
               </Tooltip>
               <Tooltip label="Backups">
-                <ActionIcon variant="light" aria-label="Backups" color={s.operation ? 'blue' : 'gray'}
+                <ActionIcon variant="light" aria-label="Backups" color={s.operation || s.backupSchedule ? 'blue' : 'gray'}
                   onClick={() => setBackupsServerId(s.id)}>
                   <IconArchive size={16} />
                 </ActionIcon>
@@ -342,7 +343,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
       )}
       {backupsServer && (
         <RemoteBackupsModal
-          host={host} server={backupsServer}
+          host={host} server={backupsServer} zone={hostZoneLabel(info)}
           onClose={() => setBackupsServerId(null)} onRefresh={invalidate}
         />
       )}

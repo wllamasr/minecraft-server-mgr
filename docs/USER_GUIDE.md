@@ -225,13 +225,29 @@ Each server on a remote host has a **Backups** button (the archive icon). It ope
 - A backup or a restore keeps running when you close the window or the app. Open the window
   again to see the progress or, if the last one failed or was cancelled, why. (msmd forgets
   that when it is restarted; the list of backups always shows what is there.)
-- Stopping or restarting the server cancels a backup in progress, and so does stopping `msmd`.
-  A restore that has started replacing files is always finished first.
-- **There are no scheduled backups on remote hosts yet**, and nothing deletes old backups for
-  you. Each backup is about the size of the world: delete the ones you no longer need.
+- Stopping or restarting the server by hand cancels a backup in progress, and so does stopping
+  `msmd`. A restore that has started replacing files is always finished first.
+- Backups you make by hand are never deleted for you. Each one is about the size of the world:
+  delete the ones you no longer need.
 - Deleting the server deletes its backups on the host. The app asks before deleting.
-- The host needs `msmd` 0.2.0 or newer. With an older one the window says that msmd must be
-  updated.
+- The host needs `msmd` 0.2.0 or newer (0.3.0 for scheduled backups). With an older one the
+  window says that msmd must be updated.
+
+**Scheduled backups** are in the same window, under the **Back up now** button. They work as
+described under [Scheduled backups](#scheduled-backups) for local servers: a time of day, a
+number of scheduled backups to keep (7 unless you change it), only *scheduled* backups are ever
+deleted automatically, a stopped server is backed up only if its files changed, and the line
+under the settings tells how the last one went. What is different on a host:
+
+- The time is **on the host's clock**; the window shows the host's time zone (on a VPS it is
+  often UTC).
+- The host makes the backup itself, so it happens **even when this app is closed** or this
+  computer is off. It is only missed if the host is down or suspended at that time, or if the
+  server stays busy (starting, stopping, another backup or a restore) for 10 minutes; a missed
+  backup is not caught up.
+- If the server also has a scheduled restart, set the backup some time before it. A scheduled
+  restart that comes due during a backup waits for it, up to 15 minutes, and then restarts
+  anyway, which cancels the backup.
 
 If a restore fails, the server's files are put back as they were. In the rare case that this is
 not possible, the message names a folder ending in `.restore-aside` next to the server folder

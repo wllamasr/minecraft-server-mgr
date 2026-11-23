@@ -59,8 +59,22 @@ All notable changes to this project are documented here. The format follows
   - A backup or restore keeps running when the app is closed; the window shows the progress and,
     when opened later, why the last one failed or was cancelled, if it did (until `msmd` is
     restarted).
-  - Not included yet: scheduled backups and automatic deletion of old backups on remote hosts.
-    Remote backups are only made when you ask, and are never deleted for you.
+- **Scheduled backups for servers on remote hosts**, in the same window: a daily time on the
+  host's clock and the number of scheduled backups to keep (7 by default). The host needs `msmd`
+  0.3.0 or newer; an older one answers that msmd must be updated.
+  - `msmd` makes the backup itself, so it happens when the app is closed. It follows the rules
+    of local scheduled backups: only scheduled backups are deleted automatically and only after
+    a new one is complete, a busy server is tried again for 10 minutes and then counts as
+    missed, a stopped server is backed up only if its files changed, and a scheduled restart
+    waits up to 15 minutes for a backup in progress.
+  - How the last scheduled backup went (made, skipped, missed or failed, and why) is stored on
+    the host, survives a restart of `msmd`, and is shown in the window. Scheduled backups are
+    marked in the list.
+  - A running server that does not answer `save-off` at the scheduled time, because it is still
+    starting, is tried again within those 10 minutes, and only recorded as failed if it still
+    does not answer by then.
+- `msmd` 0.3.0: `PATCH /v1/servers/{id}` accepts `backupSchedule` and `backupKeep`; server
+  objects carry `backupSchedule`, `backupKeep` and `backupLastRun`, and `lastOperation.scheduled`.
 - `msmd` 0.2.0: `GET`/`POST /v1/servers/{id}/backups`,
   `DELETE /v1/servers/{id}/backups/{backupId}` and
   `POST /v1/servers/{id}/backups/{backupId}/restore`; server objects carry `operation` and

@@ -289,6 +289,18 @@ SEED
       *) fail "unexpected answer to the update: $UPDATED" ;;
     esac
     expect_contains "info reports the host time zone" '"timeZone"' "$(curl -sk -H "$AUTH" "$BASE/v1/info")"
+    expect_status 400 "malformed backup schedule" PATCH "/v1/servers/$GOOD" -H "$AUTH" -H "$JSON" -d '{"backupSchedule":"3:30"}'
+    expect_status 400 "number of backups to keep out of range" PATCH "/v1/servers/$GOOD" -H "$AUTH" -H "$JSON" -d '{"backupKeep":0}'
+    expect_status 400 "the last scheduled backup cannot be written" PATCH "/v1/servers/$GOOD" -H "$AUTH" -H "$JSON" -d '{"backupLastRun":null}'
+    UPDATED="$(curl -sk -X PATCH -H "$AUTH" -H "$JSON" -d '{"backupSchedule":"03:30","backupKeep":3}' "$BASE/v1/servers/$GOOD")"
+    expect_contains "the backup schedule is stored" '"backupSchedule":"03:30"' "$UPDATED"
+    expect_contains "the number of backups to keep is stored" '"backupKeep":3' "$UPDATED"
+    UPDATED="$(curl -sk -X PATCH -H "$AUTH" -H "$JSON" -d '{"backupSchedule":null}' "$BASE/v1/servers/$GOOD")"
+    case "$UPDATED" in
+      *backupSchedule*) fail "null did not clear the backup schedule: $UPDATED" ;;
+      *'"backupKeep":3'*) echo "ok   null clears the backup schedule and nothing else" ;;
+      *) fail "unexpected answer to the update: $UPDATED" ;;
+    esac
 
     OLD_PID="$(cat "$WORK/good/pid")"
     expect_status 404 "restart of an unknown server" POST /v1/servers/does-not-exist/restart -H "$AUTH"
@@ -383,6 +395,34 @@ SEED
     done
     echo "ok   saving is turned back on after the backup"
     expect_status 409 "restore onto a running server" POST "/v1/servers/$GOOD/backups/$(backup_id "$LIST")/restore" -H "$AUTH"
+
+    # A scheduled backup, through the real scheduler: the stopped server is
+    # set to be backed up at the next minute on the host's clock.
+    HOST_TIME="$(curl -sk -H "$AUTH" "$BASE/v1/info" | sed -n 's/.*"time":"[0-9-]*T\([0-9][0-9]:[0-9][0-9]:[0-9][0-9]\).*/\1/p')"
+    [ -n "$HOST_TIME" ] || fail "info does not report the host time"
+    HH="${HOST_TIME%%:*}"; REST="${HOST_TIME#*:}"; MM="${REST%%:*}"; SS="${REST#*:}"
+    AHEAD=1
+    # Too close to the minute, the scheduler might first look after it.
+    [ "${SS#0}" -ge 40 ] && AHEAD=2
+    TOTAL=$(( (${HH#0} * 60 + ${MM#0} + AHEAD) % 1440 ))
+    AT="$(printf '%02d:%02d' $((TOTAL / 60)) $((TOTAL % 60)))"
+    UPDATED="$(curl -sk -X PATCH -H "$AUTH" -H "$JSON" -d "{\"backupSchedule\":\"$AT\",\"backupKeep\":1}" "$BASE/v1/servers/$COLD")"
+    expect_contains "a backup is scheduled for $AT" "\"backupSchedule\":\"$AT\"" "$UPDATED"
+    i=0
+    while :; do
+      VIEW="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$COLD")"
+      case "$VIEW" in *'"backupLastRun"'*) break ;; esac
+      i=$((i + 1))
+      [ "$i" -gt 170 ] && fail "the scheduled backup ($AT, host time was $HOST_TIME) never ran: $VIEW"
+      sleep 1
+    done
+    expect_contains "the scheduled backup is recorded as made" '"outcome":"ok"' "$VIEW"
+    LIST="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$COLD/backups")"
+    expect_contains "the scheduled backup is listed" '-scheduled"' "$LIST"
+    expect_contains "it is listed as scheduled" '"kind":"scheduled"' "$LIST"
+    expect_contains "backups of other kinds are kept" '"kind":"pre-restore"' "$LIST"
+    curl -sk -X PATCH -H "$AUTH" -H "$JSON" -d '{"backupSchedule":null}' "$BASE/v1/servers/$COLD" >/dev/null
+
     # Deleting a server takes its backups along.
     expect_status 204 "delete the stopped server" DELETE "/v1/servers/$COLD" -H "$AUTH"
     [ ! -e "$DATA/backups/$COLD" ] || fail "the backups of the deleted server are still there"

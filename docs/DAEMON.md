@@ -216,7 +216,7 @@ operate and debug; it is a **v2** option, not needed for the MVP.
 | `POST` | `/v1/servers` | Create (returns immediately; provisions async). |
 | `GET` | `/v1/servers/{id}` | Get one server + status. |
 | `POST` | `/v1/servers/{id}/start` \| `/stop` \| `/restart` | Lifecycle. |
-| `PATCH` | `/v1/servers/{id}` | Change settings (`restartSchedule`). |
+| `PATCH` | `/v1/servers/{id}` | Change settings (`restartSchedule`, `backupSchedule`, `backupKeep`). |
 | `DELETE` | `/v1/servers/{id}` | Delete. `204` when done; `202` for a running server, which stops first and is then removed. |
 | `GET`/`PUT` | `/v1/servers/{id}/properties` | Read/write `server.properties`. |
 | `GET`/`POST` | `/v1/servers/{id}/backups` | List backups; start one (`202` with an operation id). |

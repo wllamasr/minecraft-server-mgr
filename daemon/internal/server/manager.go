@@ -116,8 +116,16 @@ type Manager struct {
 	// restarting marks servers with a restart in flight; a second request
 	// joins the first instead of stopping the server again.
 	restarting map[string]bool
-	// schedules is the scheduler's memory. Only the scheduler goroutine uses it.
-	schedules map[string]*schedule.State
+	// schedules, backupSchedules and deferredRestarts are the scheduler's
+	// memory. Only the scheduler goroutine uses them.
+	schedules       map[string]*schedule.State
+	backupSchedules map[string]*schedule.BackupState
+	// deferredRestarts holds the scheduled restarts that are waiting for a
+	// backup in progress.
+	deferredRestarts map[string]deferredRestart
+	// backupRetries holds, per server, the scheduled backup that turned out
+	// not to be possible yet and is to be tried again.
+	backupRetries map[string]time.Time
 	// shuttingDown is set by StopAll: nothing is started or restarted after it.
 	shuttingDown bool
 
@@ -160,6 +168,10 @@ func NewManager(cfg config.Config, st *store.Store, hub *console.Hub) *Manager {
 		restarting:    map[string]bool{},
 		deleting:      map[string]bool{},
 		schedules:     map[string]*schedule.State{},
+
+		backupSchedules:  map[string]*schedule.BackupState{},
+		deferredRestarts: map[string]deferredRestart{},
+		backupRetries:    map[string]time.Time{},
 
 		starting:       map[string]int{},
 		ops:            map[string]*operation{},
@@ -674,6 +686,7 @@ func (m *Manager) remove(id string) error {
 	m.hub.ClearBuffer(id)
 	m.mu.Lock()
 	delete(m.lastOps, id)
+	delete(m.backupRetries, id)
 	m.mu.Unlock()
 	if err := os.RemoveAll(s.Dir); err != nil {
 		// Non-fatal: the record is already gone.
@@ -754,43 +767,78 @@ func (m *Manager) RequestRestart(id string) error {
 type UpdateInput struct {
 	// RestartSchedule is "HH:MM" (host time), or "" for no scheduled restart.
 	RestartSchedule *string
+	// BackupSchedule is "HH:MM" (host time), or "" for no scheduled backups.
+	BackupSchedule *string
+	// BackupKeep is how many scheduled backups to keep (1 to 365).
+	BackupKeep *int
 }
 
 // Update applies in to a server and returns the updated server.
 func (m *Manager) Update(id string, in UpdateInput) (View, error) {
-	// Read-modify-write under the lock, so a delete cannot slip in between
-	// and have its record written back.
+	// Everything is checked before anything is changed.
+	if v := in.RestartSchedule; v != nil && *v != "" && !schedule.Valid(*v) {
+		return View{}, errors.New("restartSchedule must be HH:MM in 24-hour time, for example 04:30")
+	}
+	if v := in.BackupSchedule; v != nil && *v != "" && !schedule.Valid(*v) {
+		return View{}, errors.New("backupSchedule must be HH:MM in 24-hour time, for example 03:30")
+	}
+	if v := in.BackupKeep; v != nil && !schedule.ValidKeep(*v) {
+		return View{}, fmt.Errorf("backupKeep must be a whole number from %d to %d", schedule.KeepMin, schedule.KeepMax)
+	}
+	s, err := m.mutate(id, func(s *store.Server) {
+		if in.RestartSchedule != nil {
+			s.RestartSchedule = *in.RestartSchedule
+		}
+		if in.BackupSchedule != nil {
+			s.BackupSchedule = *in.BackupSchedule
+		}
+		if in.BackupKeep != nil {
+			s.BackupKeep = *in.BackupKeep
+		}
+		s.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	})
+	if err != nil {
+		return View{}, err
+	}
+	return m.view(s), nil
+}
+
+// mutate changes the stored record of a server: read, change, write, under
+// the lock, so a delete cannot slip in between and have its record written
+// back. Nothing else may write a record it read earlier.
+func (m *Manager) mutate(id string, change func(s *store.Server)) (store.Server, error) {
 	m.updateMu.Lock()
 	defer m.updateMu.Unlock()
 	m.mu.Lock()
 	deleting := m.deleting[id]
 	m.mu.Unlock()
 	if deleting {
-		return View{}, store.ErrNotFound
+		return store.Server{}, store.ErrNotFound
 	}
 	s, err := m.store.Get(id)
 	if err != nil {
-		return View{}, err
+		return store.Server{}, err
 	}
-	if in.RestartSchedule != nil {
-		v := *in.RestartSchedule
-		if v != "" && !schedule.Valid(v) {
-			return View{}, errors.New("restartSchedule must be HH:MM in 24-hour time, for example 04:30")
-		}
-		s.RestartSchedule = v
-	}
-	s.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	change(&s)
 	if err := m.store.Put(s); err != nil {
-		return View{}, err
+		return store.Server{}, err
 	}
-	return m.view(s), nil
+	return s, nil
 }
 
-// schedulerInterval is how often scheduled restarts are checked.
+// schedulerInterval is how often schedules are checked.
 const schedulerInterval = 15 * time.Second
 
-// RunScheduler carries out scheduled restarts until stop is closed. Times are
-// in the host's time zone.
+// deferredRestart is a scheduled restart that is waiting for a backup.
+type deferredRestart struct {
+	// schedule is the restart schedule it came from; a changed one drops it.
+	schedule string
+	// deadline is when it stops waiting.
+	deadline time.Time
+}
+
+// RunScheduler carries out scheduled restarts and backups until stop is
+// closed. Times are in the host's time zone.
 func (m *Manager) RunScheduler(stop <-chan struct{}) {
 	ticker := time.NewTicker(schedulerInterval)
 	defer ticker.Stop()
@@ -804,7 +852,8 @@ func (m *Manager) RunScheduler(stop <-chan struct{}) {
 	}
 }
 
-// scheduleTick warns about and carries out the scheduled restarts due at now.
+// scheduleTick starts the scheduled backups, and warns about and carries out
+// the scheduled restarts, that are due at now.
 func (m *Manager) scheduleTick(now time.Time) {
 	m.mu.Lock()
 	down := m.shuttingDown
@@ -814,11 +863,19 @@ func (m *Manager) scheduleTick(now time.Time) {
 	}
 
 	seen := map[string]bool{}
+	seenBackup := map[string]bool{}
+	restartSchedules := map[string]string{}
 	for _, s := range m.store.List() {
+		id := s.ID
+		// Backups first: a restart that is due in the same tick then finds the
+		// backup and waits for it.
+		if s.BackupSchedule != "" && m.backupTick(now, s) {
+			seenBackup[id] = true
+		}
 		if s.RestartSchedule == "" {
 			continue
 		}
-		id := s.ID
+		restartSchedules[id] = s.RestartSchedule
 		running := m.statusOf(id) == StatusRunning
 		st, act, err := schedule.Tick(now, s.RestartSchedule, running, m.schedules[id])
 		if err != nil {
@@ -833,21 +890,56 @@ func (m *Manager) scheduleTick(now time.Time) {
 			_ = m.SendCommand(id, "say "+msg)
 		}
 		if act.Restart {
-			m.hub.PushLog(id, fmt.Sprintf("Scheduled restart (%s) — restarting now.", s.RestartSchedule), "INFO")
-			_ = m.SendCommand(id, "say Server is restarting now")
-			go func() {
-				if err := m.Restart(id); err != nil {
-					m.hub.PushLog(id, "Scheduled restart failed: "+err.Error(), "ERROR")
-				}
-			}()
+			if m.backupInFlight(id) {
+				// Restarting would throw the backup away; give it time first.
+				m.deferredRestarts[id] = deferredRestart{schedule: s.RestartSchedule, deadline: now.Add(schedule.RestartWaitForBackup)}
+				m.hub.PushLog(id, fmt.Sprintf("Scheduled restart (%s) is waiting for the backup in progress (%d minutes at most).",
+					s.RestartSchedule, int(schedule.RestartWaitForBackup/time.Minute)), "INFO")
+			} else {
+				m.scheduledRestart(id, s.RestartSchedule)
+			}
 		}
 	}
+
+	// Restarts that were put off for a backup.
+	for id, d := range m.deferredRestarts {
+		if restartSchedules[id] != d.schedule {
+			delete(m.deferredRestarts, id) // deleted, or its schedule changed
+			continue
+		}
+		running := m.statusOf(id) == StatusRunning
+		switch schedule.DeferredRestartAction(now, d.deadline, running, m.backupInFlight(id)) {
+		case schedule.DeferredWait:
+		case schedule.DeferredRestart:
+			delete(m.deferredRestarts, id)
+			m.scheduledRestart(id, d.schedule)
+		default:
+			delete(m.deferredRestarts, id)
+		}
+	}
+
 	// Forget servers that were deleted or had their schedule removed.
 	for id := range m.schedules {
 		if !seen[id] {
 			delete(m.schedules, id)
 		}
 	}
+	for id := range m.backupSchedules {
+		if !seenBackup[id] {
+			delete(m.backupSchedules, id)
+		}
+	}
+}
+
+// scheduledRestart restarts a running server because its schedule says so.
+func (m *Manager) scheduledRestart(id, restartSchedule string) {
+	m.hub.PushLog(id, fmt.Sprintf("Scheduled restart (%s) — restarting now.", restartSchedule), "INFO")
+	_ = m.SendCommand(id, "say Server is restarting now")
+	go func() {
+		if err := m.Restart(id); err != nil {
+			m.hub.PushLog(id, "Scheduled restart failed: "+err.Error(), "ERROR")
+		}
+	}()
 }
 
 // SendCommand writes a line to a running server's stdin.

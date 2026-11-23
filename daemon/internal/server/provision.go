@@ -83,17 +83,23 @@ func (m *Manager) provision(s store.Server) {
 			m.failProvision(s.ID, err)
 			return
 		}
-		// The pack pins the exact MC version and loader; persist them.
-		if res.MinecraftVersion != "" {
-			s.MinecraftVersion = res.MinecraftVersion
-		}
-		s.ModLoader = res.Loader
-		s.ModLoaderVersion = res.LoaderVersion
-		s.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-		if err := m.store.Put(s); err != nil {
+		// The pack pins the exact MC version and loader; persist them. On the
+		// record as it is now, not as it was when provisioning began: settings
+		// may have been changed meanwhile, and a server that was deleted
+		// meanwhile must not come back.
+		updated, err := m.mutate(s.ID, func(current *store.Server) {
+			if res.MinecraftVersion != "" {
+				current.MinecraftVersion = res.MinecraftVersion
+			}
+			current.ModLoader = res.Loader
+			current.ModLoaderVersion = res.LoaderVersion
+			current.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		})
+		if err != nil {
 			m.failProvision(s.ID, err)
 			return
 		}
+		s = updated
 	} else if s.ModLoader != "" && !isPlatform {
 		emit(fmt.Sprintf("Installing %s %s...", s.ModLoader, s.ModLoaderVersion), "INFO")
 		if err := loader.Install(loader.Type(s.ModLoader), s.ModLoaderVersion, s.MinecraftVersion, s.Dir, javaPath,

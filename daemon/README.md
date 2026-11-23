@@ -31,8 +31,16 @@ on the host:
   manifest), the current files are backed up first unless told otherwise, and a failed swap is
   rolled back. Both calls return at once; the server object shows the `operation` in flight and
   the `lastOperation`. Stop, restart, delete and daemon shutdown cancel a backup; a restore that
-  is already replacing files is finished first. Deleting a server deletes its backups. There is
-  no schedule and no retention: backups are made on request and stay until deleted.
+  is already replacing files is finished first. Deleting a server deletes its backups.
+- **Scheduled backups.** `PATCH /v1/servers/{id}` with `backupSchedule` (`HH:MM` on the host's
+  clock) backs the server up every day, running or stopped, and `backupKeep` (1 to 365, default
+  7) says how many of these to keep: after each one the older *scheduled* backups are deleted,
+  never the ones made on request or before a restore. A server that is busy at that time is
+  tried again for 10 minutes, then the backup counts as missed; a stopped server whose files did
+  not change since its last scheduled backup is skipped; a scheduled restart that comes due
+  during a backup waits up to 15 minutes for it. How the last one went is stored with the
+  server (`backupLastRun`). A backup missed while the host was down or suspended is not caught
+  up.
 - **Mod loaders.** Fabric, Quilt, Forge, NeoForge — installed with each
   project's official installer; the right launch command is used per loader.
 - **Plugin platforms.** Paper, Purpur and Folia: pass `modLoader` (`paper`, `purpur`, `folia`),

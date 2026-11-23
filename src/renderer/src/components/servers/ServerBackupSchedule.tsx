@@ -10,6 +10,7 @@ import {
   isValidBackupKeep,
   isValidBackupSchedule,
   parseScheduledBackupResult,
+  restartFollowsBackupClosely,
   type ScheduledBackupResult
 } from '@shared/utils/backup-schedule'
 
@@ -18,18 +19,6 @@ interface Props {
 }
 
 const DEFAULT_TIME = '03:30'
-
-function minutesOfDay(time: string): number {
-  const [h, m] = time.split(':').map(Number)
-  return h * 60 + m
-}
-
-/** True when a restart is scheduled less than 15 minutes after the backup starts. */
-function restartFollowsClosely(backup: string, restart: string | null): boolean {
-  if (!restart) return false
-  const gap = (minutesOfDay(restart) - minutesOfDay(backup) + 1440) % 1440
-  return gap < 15
-}
 
 function describeLastRun(result: ScheduledBackupResult): { text: string; color: string } {
   const when = new Date(result.at).toLocaleString()
@@ -141,7 +130,7 @@ export function ServerBackupSchedule({ server }: Props) {
             Older scheduled backups beyond the last {keep as number} will be deleted after the next scheduled backup.
           </Text>
         )}
-        {enabled && timeValid && restartFollowsClosely(time, server.restartSchedule) && (
+        {enabled && timeValid && restartFollowsBackupClosely(time, server.restartSchedule) && (
           <Alert color="yellow" variant="light">
             This server restarts at {server.restartSchedule}, less than 15 minutes after this backup time. A
             restart that comes due during a backup waits up to 15 minutes for it; set the backup earlier if

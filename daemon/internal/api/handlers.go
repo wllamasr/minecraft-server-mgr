@@ -200,6 +200,24 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 				v = new(string)
 			}
 			in.RestartSchedule = v
+		case "backupSchedule":
+			var v *string
+			if err := json.Unmarshal(raw, &v); err != nil {
+				writeError(w, http.StatusBadRequest, "backupSchedule must be a string or null")
+				return
+			}
+			if v == nil {
+				v = new(string)
+			}
+			in.BackupSchedule = v
+		case "backupKeep":
+			// A whole number: 7.5, "7" and null are all refused here.
+			var v *int
+			if err := json.Unmarshal(raw, &v); err != nil || v == nil {
+				writeError(w, http.StatusBadRequest, "backupKeep must be a whole number from 1 to 365")
+				return
+			}
+			in.BackupKeep = v
 		default:
 			writeError(w, http.StatusBadRequest, "unknown or read-only field: "+field)
 			return

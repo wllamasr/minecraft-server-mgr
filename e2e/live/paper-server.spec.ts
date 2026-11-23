@@ -220,8 +220,8 @@ test('deploys a Paper server to a remote host', async () => {
   const baseUrl = process.env.MSM_E2E_LIVE_MSMD_URL
   const token = process.env.MSM_E2E_LIVE_MSMD_TOKEN
   test.skip(!baseUrl || !token, 'Set MSM_E2E_LIVE_MSMD_URL and MSM_E2E_LIVE_MSMD_TOKEN to test a remote host')
-  // Three boots of a real server, a backup and a restore.
-  test.setTimeout(25 * 60_000)
+  // Three boots of a real server, a backup, a scheduled backup and a restore.
+  test.setTimeout(30 * 60_000)
 
   const created = await page.evaluate(
     async ({ baseUrl, token, mc, port }) => {
@@ -328,10 +328,41 @@ test('deploys a Paper server to a remote host', async () => {
     // A backup that is not there is not mistaken for an outdated daemon.
     expect(missing).toMatch(/backup not found/)
 
+    // A scheduled backup: set, in the window, for the next minute on the
+    // host's clock. The host makes it on its own and keeps only the last one.
+    const info = await page.evaluate(({ hostId }) => (window as unknown as ApiWindow).api.hostInfo(hostId), created)
+    const clock = /T(\d{2}):(\d{2}):(\d{2})/.exec(info.time as string)
+    expect(clock).not.toBeNull()
+    const [hh, mm, ss] = (clock as RegExpExecArray).slice(1).map(Number)
+    // Too close to the minute, the host's scheduler might first look after it.
+    const due = (hh * 60 + mm + (ss >= 40 ? 2 : 1)) % 1440
+    const at = `${String(Math.floor(due / 60)).padStart(2, '0')}:${String(due % 60).padStart(2, '0')}`
+    const schedule = page.getByTestId('remote-backup-schedule')
+    await schedule.getByRole('switch', { name: 'Back up every day' }).click()
+    await schedule.getByLabel('Backup time').fill(at)
+    await schedule.getByLabel('Scheduled backups to keep').fill('1')
+    await schedule.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText(`will be backed up every day at ${at} (host time), keeping the last 1.`)).toBeVisible({
+      timeout: 30_000
+    })
+    await expect(rows).toHaveCount(2, { timeout: 4 * 60_000 })
+    await expect(rows.first().getByText('scheduled', { exact: true })).toBeVisible()
+    await expect(page.getByTestId('remote-backup-last-run')).toContainText('Last scheduled backup: made on', { timeout: 30_000 })
+    const withScheduled = await page.evaluate(
+      ({ hostId, serverId }) => (window as unknown as ApiWindow).api.listRemoteBackups(hostId, serverId),
+      created
+    )
+    expect(withScheduled.map((b: { kind: string }) => b.kind)).toEqual(['scheduled', 'manual'])
+    expect(withScheduled[0].whileRunning).toBe(true)
+    expect((await remote()).log).toMatch(new RegExp(`Scheduled backup \\(${at}\\)\\.`))
+    // The server kept running through it.
+    expect((await remote()).status).toBe('running')
+
     await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.stopRemoteServer(hostId, serverId), created)
     await expect.poll(async () => (await remote()).status, { timeout: 90_000, intervals: [1000] }).toBe('stopped')
 
-    // Damage the stopped server (msmd runs on this machine), then restore.
+    // Damage the stopped server (msmd runs on this machine), then restore
+    // the newest backup: the one the schedule made.
     const serverDir = created.server.dir as string
     const level = join(serverDir, 'world', 'level.dat')
     const marker = join(serverDir, 'world', 'added-after-the-backup.txt')
@@ -344,7 +375,7 @@ test('deploys a Paper server to a remote host', async () => {
     await page.getByRole('button', { name: 'Restore', exact: true }).click()
     await expect(page.getByText('Backup restored. You can start the server now.')).toBeVisible({ timeout: 4 * 60_000 })
     // The state before the restore was kept as a backup of its own.
-    await expect(rows).toHaveCount(2)
+    await expect(rows).toHaveCount(3)
     await expect(backups.getByText('before restore')).toBeVisible()
     expect(existsSync(level)).toBe(true)
     expect(existsSync(marker)).toBe(false)

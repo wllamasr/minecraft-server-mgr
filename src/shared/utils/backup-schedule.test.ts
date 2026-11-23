@@ -6,6 +6,8 @@ import {
   isValidBackupKeep,
   isValidBackupSchedule,
   parseScheduledBackupResult,
+  readScheduledBackupResult,
+  restartFollowsBackupClosely,
   scheduledBackupsToPrune,
   tickBackupSchedule,
   type BackupScheduleState
@@ -117,6 +119,36 @@ describe('parseScheduledBackupResult', () => {
     for (const raw of [null, '', 'x', '{}', '{"at":"nope","outcome":"ok"}', '{"at":"2026-06-10T04:00:10.000Z","outcome":"great"}', 5]) {
       expect(parseScheduledBackupResult(raw)).toBeNull()
     }
+  })
+})
+
+describe('readScheduledBackupResult', () => {
+  it('reads what a remote host reports and rejects anything else', () => {
+    expect(readScheduledBackupResult({ at: '2026-06-10T04:00:10Z', outcome: 'missed', message: 'busy', extra: 1 })).toEqual({
+      at: '2026-06-10T04:00:10Z',
+      outcome: 'missed',
+      message: 'busy'
+    })
+    expect(readScheduledBackupResult({ at: '2026-06-10T04:00:10Z', outcome: 'ok', message: '' })).toEqual({
+      at: '2026-06-10T04:00:10Z',
+      outcome: 'ok'
+    })
+    for (const value of [null, undefined, 'ok', 7, [], {}, { at: 'nope', outcome: 'ok' }, { at: '2026-06-10T04:00:10Z', outcome: 'great' }]) {
+      expect(readScheduledBackupResult(value)).toBeNull()
+    }
+  })
+})
+
+describe('restartFollowsBackupClosely', () => {
+  it('is true for a restart less than 15 minutes after the backup, also over midnight', () => {
+    expect(restartFollowsBackupClosely('04:00', '04:00')).toBe(true)
+    expect(restartFollowsBackupClosely('04:00', '04:14')).toBe(true)
+    expect(restartFollowsBackupClosely('23:55', '00:05')).toBe(true)
+    expect(restartFollowsBackupClosely('04:00', '04:15')).toBe(false)
+    expect(restartFollowsBackupClosely('04:00', '03:59')).toBe(false)
+    expect(restartFollowsBackupClosely('04:00', null)).toBe(false)
+    expect(restartFollowsBackupClosely('04:00', undefined)).toBe(false)
+    expect(restartFollowsBackupClosely('4:00', '04:05')).toBe(false)
   })
 })
 

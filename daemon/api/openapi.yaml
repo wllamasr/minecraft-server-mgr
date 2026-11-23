@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: msmd — Minecraft Server Manager daemon
-  version: 0.2.0
+  version: 0.3.0
   description: >
     HTTP + Server-Sent-Events API for managing Minecraft servers on a remote
     host. All endpoints are served over TLS. Every route except /v1/health and
@@ -117,8 +117,11 @@ paths:
         Besides its settings and status, a server carries "operation" while a backup or a restore
         of it is running ({id, kind: backup|restore, phase: saving|copying|replacing, doneBytes,
         totalBytes}) and "lastOperation" once one has ended ({id, kind, ok, cancelled, error,
-        warning, backupId, finishedAt}). lastOperation is kept in memory: it is gone after the
-        daemon restarts. Both are omitted when there is nothing to report.
+        warning, backupId, scheduled, finishedAt}). lastOperation is kept in memory: it is gone
+        after the daemon restarts. Both are omitted when there is nothing to report. A server
+        with scheduled backups also carries "backupSchedule", "backupKeep" (omitted while it was
+        never set, which means the default, 7) and, once one was due, "backupLastRun" ({at, outcome:
+        ok|skipped|missed|failed, message}), which is stored and survives a daemon restart.
       responses: { "200": { description: OK }, "404": { description: Not found } }
     patch:
       summary: Change settings of a server
@@ -140,9 +143,28 @@ paths:
                     it off. Players are warned 5 minutes and 1 minute before; only a running
                     server is restarted.
                   example: "04:30"
+                backupSchedule:
+                  type: string
+                  nullable: true
+                  description: >-
+                    Daily backup time "HH:MM" (24-hour) on the host's clock. null or "" turns it
+                    off. The server is backed up running or stopped; a stopped one only if its
+                    files changed since its last scheduled backup. A server that is busy at that
+                    time (starting, stopping, another backup or a restore) is tried again for 10
+                    minutes, then the backup is recorded as missed. A scheduled restart that
+                    comes due during a backup waits up to 15 minutes for it.
+                  example: "03:30"
+                backupKeep:
+                  type: integer
+                  minimum: 1
+                  maximum: 365
+                  description: >-
+                    How many scheduled backups are kept (default 7). After each scheduled backup
+                    the older scheduled ones are deleted; manual and pre-restore backups never
+                    are. A lower number takes effect at the next scheduled backup.
       responses:
         "200": { description: The updated server }
-        "400": { description: Malformed schedule, or an unknown or read-only field }
+        "400": { description: Malformed schedule or number, or an unknown or read-only field }
         "404": { description: Unknown server }
     delete:
       summary: Delete a server
@@ -209,8 +231,8 @@ paths:
           description: >-
             Not now: another backup or a restore is running, or the server is starting, stopping,
             restarting, about to restart after a crash, being provisioned or deleted, or the
-            daemon is shutting down. (The daemon itself only makes manual and pre-restore
-            backups; "scheduled" is listed if such an archive is present.)
+            daemon is shutting down. (This call makes a "manual" backup; "scheduled" ones are
+            made by the daemon when the server has a backupSchedule, see PATCH.)
   /v1/servers/{id}/backups/{backupId}:
     delete:
       summary: Delete a backup

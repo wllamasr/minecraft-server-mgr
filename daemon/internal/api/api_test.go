@@ -155,6 +155,65 @@ func do(t *testing.T, method, url, body string) (*http.Response, string) {
 	return resp, string(out)
 }
 
+func TestUpdateOfTheBackupSchedule(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Config{
+		ServersRoot: filepath.Join(dir, "servers"),
+		BackupsRoot: filepath.Join(dir, "backups"),
+		StorePath:   filepath.Join(dir, "servers.json"),
+		JavaPath:    "java",
+	}
+	st, err := store.Open(cfg.StorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Put(store.Server{ID: "one", Name: "one", Dir: filepath.Join(cfg.ServersRoot, "one"), MinecraftVersion: "1.21.4"}); err != nil {
+		t.Fatal(err)
+	}
+	mgr := server.NewManager(cfg, st, console.New())
+	ts := httptest.NewServer(New(cfg, mgr, testToken, "fpr").Handler())
+	defer ts.Close()
+	url := ts.URL + "/v1/servers/one"
+
+	for _, c := range []struct {
+		body     string
+		want     int
+		contains string
+	}{
+		{`{"backupSchedule":"3:30"}`, 400, "backupSchedule must be HH:MM"},
+		{`{"backupSchedule":330}`, 400, "backupSchedule must be a string or null"},
+		{`{"backupKeep":0}`, 400, "backupKeep must be a whole number from 1 to 365"},
+		{`{"backupKeep":366}`, 400, "backupKeep must be a whole number from 1 to 365"},
+		{`{"backupKeep":2.5}`, 400, "backupKeep must be a whole number from 1 to 365"},
+		{`{"backupKeep":"7"}`, 400, "backupKeep must be a whole number from 1 to 365"},
+		{`{"backupKeep":null}`, 400, "backupKeep must be a whole number from 1 to 365"},
+		// How the last one went is the daemon's to write.
+		{`{"backupLastRun":{"at":"2026-01-01T00:00:00Z","outcome":"ok"}}`, 400, "unknown or read-only field"},
+		// One wrong field refuses the whole update.
+		{`{"backupSchedule":"03:30","backupKeep":0}`, 400, "backupKeep"},
+	} {
+		resp, body := do(t, "PATCH", url, c.body)
+		if resp.StatusCode != c.want || !strings.Contains(body, c.contains) {
+			t.Errorf("PATCH %s = %d %s, want %d with %q", c.body, resp.StatusCode, body, c.want, c.contains)
+		}
+	}
+	if s, _ := st.Get("one"); s.BackupSchedule != "" || s.BackupKeep != 0 {
+		t.Fatalf("a refused update changed the server: %+v", s)
+	}
+
+	resp, body := do(t, "PATCH", url, `{"backupSchedule":"03:30","backupKeep":14}`)
+	if resp.StatusCode != 200 || !strings.Contains(body, `"backupSchedule":"03:30"`) || !strings.Contains(body, `"backupKeep":14`) {
+		t.Fatalf("update = %d %s", resp.StatusCode, body)
+	}
+	resp, body = do(t, "PATCH", url, `{"backupSchedule":null}`)
+	if resp.StatusCode != 200 || strings.Contains(body, "backupSchedule") || !strings.Contains(body, `"backupKeep":14`) {
+		t.Fatalf("clearing = %d %s", resp.StatusCode, body)
+	}
+	if resp, body = do(t, "PATCH", ts.URL+"/v1/servers/nope", `{"backupKeep":3}`); resp.StatusCode != 404 {
+		t.Fatalf("unknown server = %d %s", resp.StatusCode, body)
+	}
+}
+
 func TestBackupRoutes(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Config{

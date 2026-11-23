@@ -153,7 +153,14 @@ finishedAt }`) tells how the last one ended; compare its `id` with the one retur
 `listRemoteServers` to follow it. `lastOperation` is kept in the daemon's memory and is gone
 after msmd restarts. `backupFirst` defaults to `true`. Errors carry the daemon's own sentence
 (`Stop the server before restoring a backup`, `backup not found`); a host with msmd older than
-0.2.0 rejects all four with the "older msmd" message. `backupId` must look like a backup id
+0.2.0 rejects all four with the "older msmd" message. **Scheduled backups** of a remote server
+are settings of the server on the host: `updateRemoteServer(hostId, serverId, { backupSchedule?,
+backupKeep? })` (same shapes and checks as `server:update-settings`, the time being on the host's
+clock; `restartSchedule` goes through the same call), and `RemoteServer` carries
+`backupSchedule?`, `backupKeep?` (absent means 7) and `backupLastRun?` (`{ at, outcome, message?
+}`, an object here, not a JSON string: read it with `readScheduledBackupResult`). A
+`lastOperation` with `scheduled: true` belongs to a backup the host's schedule started. A host
+with msmd older than 0.3.0 refuses these settings with the "older msmd" message. `backupId` must look like a backup id
 (`YYYYMMDD-HHMMSS-manual|pre-restore|scheduled`), anything else is rejected before a request is
 made.
 

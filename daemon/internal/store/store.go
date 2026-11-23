@@ -31,9 +31,17 @@ type Server struct {
 	// RestartSchedule is a daily restart time, "HH:MM" in the host's time zone;
 	// empty means no scheduled restart.
 	RestartSchedule string `json:"restartSchedule,omitempty"`
-	AutoStart       bool   `json:"autoStart"`
-	CreatedAt       string `json:"createdAt"`
-	UpdatedAt       string `json:"updatedAt"`
+	// BackupSchedule is a daily backup time, "HH:MM" in the host's time zone;
+	// empty means no scheduled backups.
+	BackupSchedule string `json:"backupSchedule,omitempty"`
+	// BackupKeep is how many scheduled backups are kept (1 to 365); 0 means
+	// the default.
+	BackupKeep int `json:"backupKeep,omitempty"`
+	// BackupLastRun is how the last scheduled backup went.
+	BackupLastRun *BackupRun `json:"backupLastRun,omitempty"`
+	AutoStart     bool       `json:"autoStart"`
+	CreatedAt     string     `json:"createdAt"`
+	UpdatedAt     string     `json:"updatedAt"`
 	// Modpack provenance (set when the server was deployed from a modpack).
 	ModpackSource    string `json:"modpackSource,omitempty"`
 	ModpackProjectID string `json:"modpackProjectId,omitempty"`
@@ -42,11 +50,25 @@ type Server struct {
 	ModpackURL       string `json:"modpackUrl,omitempty"`
 }
 
+// BackupRun is how one scheduled backup went.
+type BackupRun struct {
+	// At is when this was recorded (RFC 3339, UTC).
+	At string `json:"at"`
+	// Outcome is "ok" (a backup was made), "skipped" (nothing had changed on a
+	// stopped server), "missed" (it could not be started in time) or "failed"
+	// (it started and did not finish).
+	Outcome string `json:"outcome"`
+	Message string `json:"message,omitempty"`
+}
+
 // Store is a small, mutex-guarded, JSON-file-backed collection of servers.
 type Store struct {
 	path string
 	mu   sync.RWMutex
 	data map[string]Server
+	// writeMu serializes writes of the file: they all go through one
+	// temporary file, and the last one to start must be the last to land.
+	writeMu sync.Mutex
 }
 
 // Open loads the store from disk, creating an empty one if the file is absent.
@@ -111,6 +133,8 @@ func (s *Store) Delete(id string) error {
 }
 
 func (s *Store) persist() error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	s.mu.RLock()
 	list := make([]Server, 0, len(s.data))
 	for _, sv := range s.data {

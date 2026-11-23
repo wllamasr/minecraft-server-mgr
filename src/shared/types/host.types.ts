@@ -36,6 +36,12 @@ export interface RemoteServer {
   modpackName?: string
   /** Daily restart time "HH:MM" in the host's time zone; absent when not scheduled. */
   restartSchedule?: string
+  /** Daily backup time "HH:MM" in the host's time zone; absent when not scheduled. */
+  backupSchedule?: string
+  /** How many scheduled backups the host keeps; absent means the default (7). */
+  backupKeep?: number
+  /** How the last scheduled backup went. Kept by the host across its restarts. */
+  backupLastRun?: { at: string; outcome: string; message?: string }
   /** The backup or restore in flight, if any. Absent on daemons without backups. */
   operation?: RemoteOperation
   /** How the last backup or restore ended, if one ran since the daemon started. */
@@ -64,6 +70,8 @@ export interface RemoteOperationResult {
   warning?: string
   /** The backup that was made or restored. */
   backupId?: string
+  /** The host's schedule started it; how it went is also in `backupLastRun`. */
+  scheduled?: boolean
   finishedAt: string
 }
 

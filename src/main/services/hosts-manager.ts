@@ -1,6 +1,13 @@
 import { isPluginPlatform } from '../../shared/constants'
 import { isValidRestartSchedule } from '../../shared/utils/restart-schedule'
-import { isBackupId, isOlderDaemonError, OLDER_DAEMON_MESSAGE, plainDaemonMessage } from '../../shared/utils/daemon-errors'
+import { isValidBackupKeep, isValidBackupSchedule } from '../../shared/utils/backup-schedule'
+import {
+  isBackupId,
+  isOlderDaemonError,
+  OLDER_DAEMON_MESSAGE,
+  plainDaemonMessage,
+  plainSettingsMessage
+} from '../../shared/utils/daemon-errors'
 import { safeStorage } from 'electron'
 import { v4 as uuid } from 'uuid'
 import { eq } from 'drizzle-orm'
@@ -138,21 +145,42 @@ export function restartRemoteServer(hostId: string, serverId: string): Promise<v
   )
 }
 
-/** Set (HH:MM, host time) or clear (null) a remote server's daily restart. */
+/**
+ * Change the settings of a remote server: its daily restart and its daily
+ * backup (HH:MM on the host's clock, or null for none), and how many
+ * scheduled backups the host keeps. Only what is given changes.
+ */
 export function updateRemoteServer(
   hostId: string,
   serverId: string,
-  settings: { restartSchedule?: string | null }
+  settings: { restartSchedule?: string | null; backupSchedule?: string | null; backupKeep?: number }
 ): Promise<RemoteServer> {
   if (!settings || typeof settings !== 'object') return Promise.reject(new Error('Invalid settings'))
-  const body: { restartSchedule?: string | null } = {}
+  const body: { restartSchedule?: string | null; backupSchedule?: string | null; backupKeep?: number } = {}
   if (settings.restartSchedule !== undefined) {
     if (settings.restartSchedule !== null && !isValidRestartSchedule(settings.restartSchedule)) {
       return Promise.reject(new Error('Restart time must be HH:MM in 24-hour format, for example 04:30'))
     }
     body.restartSchedule = settings.restartSchedule
   }
-  return remoteRequest<RemoteServer>(connFor(hostId), 'PATCH', `/v1/servers/${serverId}`, body).catch(explainOlderDaemon)
+  if (settings.backupSchedule !== undefined) {
+    if (settings.backupSchedule !== null && !isValidBackupSchedule(settings.backupSchedule)) {
+      return Promise.reject(new Error('Backup time must be HH:MM in 24-hour format, for example 03:30'))
+    }
+    body.backupSchedule = settings.backupSchedule
+  }
+  if (settings.backupKeep !== undefined) {
+    if (!isValidBackupKeep(settings.backupKeep)) {
+      return Promise.reject(new Error('The number of backups to keep must be a whole number from 1 to 365'))
+    }
+    body.backupKeep = settings.backupKeep
+  }
+  // A host whose msmd is older refuses the settings it does not know by name.
+  return remoteRequest<RemoteServer>(connFor(hostId), 'PATCH', `/v1/servers/${encodeURIComponent(serverId)}`, body).catch(
+    (err: unknown) => {
+      throw new Error(plainSettingsMessage(err instanceof Error ? err.message : String(err)))
+    }
+  )
 }
 
 export function deleteRemoteServer(hostId: string, serverId: string): Promise<void> {

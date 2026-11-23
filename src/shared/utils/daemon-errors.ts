@@ -18,6 +18,23 @@ export function isOlderDaemonError(message: string): boolean {
 }
 
 /**
+ * Whether an error says that the daemon does not know a setting it was asked
+ * to change. Settings added after a host's msmd was installed are refused
+ * there by name, like the ones nobody may change.
+ */
+export function isUnknownSettingError(message: string): boolean {
+  return /^Daemon HTTP 400: unknown or read-only field\b/.test(message)
+}
+
+/**
+ * The daemon's answer to a change of settings, without the transport prefix.
+ * A daemon that does not know the route, or one of the settings, is too old.
+ */
+export function plainSettingsMessage(message: string): string {
+  return isUnknownSettingError(message) ? OLDER_DAEMON_MESSAGE : plainDaemonMessage(message)
+}
+
+/**
  * The daemon's own words, without the transport prefix:
  * "Daemon HTTP 409: Stop the server before restoring a backup" reads better
  * as the sentence alone.

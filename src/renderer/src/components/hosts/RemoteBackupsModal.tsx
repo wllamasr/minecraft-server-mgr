@@ -6,11 +6,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconArchive, IconRestore, IconTrash } from '@tabler/icons-react'
 import type { BackupInfo, RemoteHost, RemoteOperation, RemoteOperationResult, RemoteServer } from '@shared/types'
 import { formatBytes } from '@shared/utils/format'
+import { RemoteBackupSchedule } from './RemoteBackupSchedule'
 
 interface Props {
   host: RemoteHost
   /** The server as the host last reported it; it carries the operation in flight. */
   server: RemoteServer
+  /** The host's time zone, as a label; null when the host did not report its clock. */
+  zone: string | null
   onClose: () => void
   /** Ask for the server list again (it is what carries progress and results). */
   onRefresh: () => void
@@ -31,7 +34,7 @@ const cleanError = (err: Error): string => err.message.replace(/^Error invoking 
  * delete one. The host does the work and keeps the archives; this window only
  * asks for it and follows along through the server list it is given.
  */
-export function RemoteBackupsModal({ host, server, onClose, onRefresh }: Props) {
+export function RemoteBackupsModal({ host, server, zone, onClose, onRefresh }: Props) {
   const queryClient = useQueryClient()
   // The operation this window started and whose outcome it still owes the user.
   const [awaiting, setAwaiting] = useState<string | null>(null)
@@ -71,6 +74,17 @@ export function RemoteBackupsModal({ host, server, onClose, onRefresh }: Props) 
       queryClient.invalidateQueries({ queryKey: ['remote-backups', host.id, server.id] })
     }
   }, [operation, queryClient, host.id, server.id])
+
+  // So may one that began and ended between two looks at the server (a
+  // scheduled backup of a small world takes a second), or a scheduled backup
+  // that was skipped and only deleted old ones: both leave a new result.
+  const resultSeen = `${last?.id ?? ''}|${server.backupLastRun?.at ?? ''}`
+  const lastResultSeen = useRef(resultSeen)
+  useEffect(() => {
+    if (lastResultSeen.current === resultSeen) return
+    lastResultSeen.current = resultSeen
+    queryClient.invalidateQueries({ queryKey: ['remote-backups', host.id, server.id] })
+  }, [resultSeen, queryClient, host.id, server.id])
 
   // Report how the operation started here ended.
   useEffect(() => {
@@ -184,8 +198,8 @@ export function RemoteBackupsModal({ host, server, onClose, onRefresh }: Props) 
           <Text size="sm" c="dimmed">
             Backups are made and kept on {host.name}, and are deleted with the server. A backup holds the world,
             the settings and the mods or plugins; it can be made while the server is running (world saving is
-            paused for the copy). Restoring needs the server to be stopped. Stopping or restarting the server
-            cancels a backup in progress.
+            paused for the copy). Restoring needs the server to be stopped. Stopping or restarting the server by
+            hand cancels a backup in progress; a scheduled restart waits up to 15 minutes for it.
           </Text>
           <Tooltip label="Wait until the server is running or stopped" disabled={canBackUp}>
             <Button
@@ -210,7 +224,10 @@ export function RemoteBackupsModal({ host, server, onClose, onRefresh }: Props) 
           </Stack>
         )}
 
-        {!busy && last && <LastResult result={last} />}
+        {/* How a scheduled backup went is told by the schedule below. */}
+        {!busy && last && !last.scheduled && <LastResult result={last} />}
+
+        {unavailable === null && <RemoteBackupSchedule host={host} server={server} zone={zone} onSaved={onRefresh} />}
 
         {unavailable !== null ? (
           <Alert color="yellow" title="Backups are not available on this host">
@@ -236,6 +253,13 @@ export function RemoteBackupsModal({ host, server, onClose, onRefresh }: Props) 
                   <Table.Td>
                     <Group gap="xs">
                       <Text size="sm">{new Date(backup.createdAt).toLocaleString()}</Text>
+                      {backup.kind === 'scheduled' && (
+                        <Tooltip label="Made by the daily schedule; only these are deleted automatically">
+                          <Badge size="xs" variant="light" color="blue">
+                            scheduled
+                          </Badge>
+                        </Tooltip>
+                      )}
                       {backup.kind === 'pre-restore' && (
                         <Tooltip label="Made automatically right before a restore">
                           <Badge size="xs" variant="light" color="orange">

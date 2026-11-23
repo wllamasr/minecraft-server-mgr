@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { isBackupId, isOlderDaemonError, OLDER_DAEMON_MESSAGE, plainDaemonMessage } from './daemon-errors'
+import {
+  isBackupId,
+  isOlderDaemonError,
+  isUnknownSettingError,
+  OLDER_DAEMON_MESSAGE,
+  plainDaemonMessage,
+  plainSettingsMessage
+} from './daemon-errors'
 
 describe('isOlderDaemonError', () => {
   it('recognises a route the daemon does not have', () => {
@@ -33,6 +40,26 @@ describe('plainDaemonMessage', () => {
 
   it('passes anything else through', () => {
     expect(plainDaemonMessage('Certificate fingerprint mismatch')).toBe('Certificate fingerprint mismatch')
+  })
+})
+
+describe('settings an older daemon does not know', () => {
+  it('recognises a setting that is refused by name', () => {
+    // What msmd 0.2.0 answers when asked to schedule backups.
+    expect(isUnknownSettingError('Daemon HTTP 400: unknown or read-only field: backupSchedule')).toBe(true)
+    expect(isUnknownSettingError('Daemon HTTP 400: backupKeep must be a whole number from 1 to 365')).toBe(false)
+    expect(isUnknownSettingError('Daemon HTTP 404: server not found')).toBe(false)
+  })
+
+  it('explains it as an older daemon, and passes real answers through', () => {
+    expect(plainSettingsMessage('Daemon HTTP 400: unknown or read-only field: backupSchedule')).toBe(OLDER_DAEMON_MESSAGE)
+    // A daemon without the route at all.
+    expect(plainSettingsMessage('Daemon HTTP 405: Method Not Allowed\n')).toBe(OLDER_DAEMON_MESSAGE)
+    expect(plainSettingsMessage('Daemon HTTP 400: backupSchedule must be HH:MM in 24-hour time, for example 03:30')).toBe(
+      'backupSchedule must be HH:MM in 24-hour time, for example 03:30'
+    )
+    expect(plainSettingsMessage('Daemon HTTP 404: server not found')).toBe('server not found')
+    expect(plainSettingsMessage('connect ECONNREFUSED 10.0.0.2:8443')).toBe('connect ECONNREFUSED 10.0.0.2:8443')
   })
 })
 

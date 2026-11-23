@@ -63,7 +63,10 @@ type OperationResult struct {
 	// Warning is set when the operation went through but left something to do.
 	Warning string `json:"warning,omitempty"`
 	// BackupID is the backup that was made or restored.
-	BackupID   string `json:"backupId,omitempty"`
+	BackupID string `json:"backupId,omitempty"`
+	// Scheduled is set for a backup the schedule started; how those went is
+	// also kept, across daemon restarts, in the server's backupLastRun.
+	Scheduled  bool   `json:"scheduled,omitempty"`
 	FinishedAt string `json:"finishedAt"`
 }
 
@@ -80,6 +83,9 @@ type operation struct {
 	// savePaused is set while the running server has (or may have) automatic
 	// saving turned off for this backup.
 	savePaused bool
+	// scheduled says that the schedule started this backup. Set before the
+	// operation runs and not changed after.
+	scheduled bool
 }
 
 type lineWatcher struct{ fn func(line string) }
@@ -174,7 +180,7 @@ func (m *Manager) RequestBackup(id string) (string, error) {
 		return "", err
 	}
 	go m.runOperation(op, s, func() (string, string, error) {
-		backupID, err := m.runBackup(op, s, rs, "manual")
+		backupID, err := m.runBackup(op, s, rs, "manual", nil)
 		return backupID, "", err
 	})
 	return op.state.ID, nil
@@ -270,6 +276,7 @@ func (m *Manager) runOperation(op *operation, s store.Server, run func() (backup
 		Kind:       op.state.Kind,
 		OK:         err == nil,
 		Warning:    warning,
+		Scheduled:  op.scheduled,
 		FinishedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	if err == nil {
@@ -319,6 +326,14 @@ func (m *Manager) cancelOpLocked(id, reason string) *operation {
 
 var errNothingToBackUp = errors.New("The server has no files to back up")
 
+// errUnchanged says that a backup was not made because the caller's check
+// found nothing new to back up.
+var errUnchanged = errors.New("nothing has changed since the last scheduled backup")
+
+// errNoSaveOffAnswer says that a running server did not react to "save-off":
+// it is most likely still starting.
+var errNoSaveOffAnswer = errors.New("The server did not answer the save-off command. If it is still starting, try again once it is up.")
+
 func ensureFreeSpace(dir string, needed int64) error {
 	free, ok := backup.FreeSpace(dir)
 	if !ok {
@@ -345,23 +360,37 @@ func formatBytes(n int64) string {
 
 // runBackup makes one backup of s and returns its id. rs is the server's
 // process when the backup is made while it runs.
-func (m *Manager) runBackup(op *operation, s store.Server, rs *runningServer, kind string) (id string, err error) {
+//
+// unchanged, when given, is asked about the files of a stopped server before
+// anything is copied: if it says that nothing is new, no backup is made and
+// the error is errUnchanged. (A running server always has something new.)
+func (m *Manager) runBackup(op *operation, s store.Server, rs *runningServer, kind string, unchanged func(*backup.Plan) bool) (id string, err error) {
 	started := time.Now()
 	hot := rs != nil
-	if hot {
-		m.hub.PushLog(s.ID, "Backup started — pausing world saving for a consistent copy...", "INFO")
-	} else {
-		m.hub.PushLog(s.ID, "Backup started...", "INFO")
-	}
 	defer func() {
 		switch {
-		case err == nil, errors.Is(err, errNothingToBackUp) && kind == "pre-restore":
+		case err == nil, errors.Is(err, errUnchanged), errors.Is(err, errNothingToBackUp) && kind == "pre-restore":
 		case errors.Is(err, backup.ErrCancelled):
 			m.hub.PushLog(s.ID, "Backup cancelled ("+cancelReason(err)+").", "WARN")
 		default:
 			m.hub.PushLog(s.ID, "Backup failed: "+err.Error(), "WARN")
 		}
 	}()
+
+	var plan *backup.Plan
+	if !hot && unchanged != nil {
+		if plan, err = backup.MakePlan(op.ctx, s.Dir); err != nil {
+			return "", err
+		}
+		if len(plan.Files) > 0 && unchanged(plan) {
+			return "", errUnchanged
+		}
+	}
+	if hot {
+		m.hub.PushLog(s.ID, "Backup started — pausing world saving for a consistent copy...", "INFO")
+	} else {
+		m.hub.PushLog(s.ID, "Backup started...", "INFO")
+	}
 
 	dir := m.backupDir(s.ID)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
@@ -379,9 +408,10 @@ func (m *Manager) runBackup(op *operation, s store.Server, rs *runningServer, ki
 	}
 
 	m.setPhase(op, "copying")
-	plan, err := backup.MakePlan(op.ctx, s.Dir)
-	if err != nil {
-		return "", err
+	if plan == nil {
+		if plan, err = backup.MakePlan(op.ctx, s.Dir); err != nil {
+			return "", err
+		}
 	}
 	if len(plan.Files) == 0 {
 		return "", errNothingToBackUp
@@ -533,7 +563,7 @@ func (m *Manager) pauseSaving(op *operation, id string, rs *runningServer) (resu
 	case <-op.ctx.Done():
 		return giveUp(backup.Cancelled(op.ctx))
 	case <-offTimer.C:
-		return giveUp(errors.New("The server did not answer the save-off command. If it is still starting, try again once it is up."))
+		return giveUp(errNoSaveOffAnswer)
 	}
 
 	// Leave saving off if an admin had turned it off on purpose.
@@ -601,7 +631,7 @@ func (m *Manager) runRestore(op *operation, s store.Server, backupID string, bac
 	}
 
 	if backupFirst {
-		_, err := m.runBackup(op, s, nil, "pre-restore")
+		_, err := m.runBackup(op, s, nil, "pre-restore", nil)
 		switch {
 		case err == nil, errors.Is(err, errNothingToBackUp):
 		case errors.Is(err, backup.ErrCancelled):
@@ -651,6 +681,9 @@ func (m *Manager) runRestore(op *operation, s store.Server, backupID string, bac
 		warning = err.Error()
 		m.hub.PushLog(s.ID, warning, "WARN")
 	}
+	// The files now carry the dates they had when the backup was made: the
+	// next scheduled backup must not take the server for unchanged.
+	m.markRestored(s.ID)
 	m.hub.PushLog(s.ID, fmt.Sprintf("Backup %s restored: %d file(s).", backupID, count), "INFO")
 	return warning, nil
 }

@@ -101,22 +101,41 @@ export interface ScheduledBackupResult {
 
 const OUTCOMES = ['ok', 'skipped', 'missed', 'failed']
 
+/**
+ * Check a result that came from elsewhere (the app's database, or a remote
+ * host's answer); null when it is not one.
+ */
+export function readScheduledBackupResult(input: unknown): ScheduledBackupResult | null {
+  if (!input || typeof input !== 'object') return null
+  const value = input as Partial<ScheduledBackupResult>
+  if (typeof value.at !== 'string' || Number.isNaN(Date.parse(value.at))) return null
+  if (typeof value.outcome !== 'string' || !OUTCOMES.includes(value.outcome)) return null
+  return {
+    at: value.at,
+    outcome: value.outcome,
+    ...(typeof value.message === 'string' && value.message ? { message: value.message } : {})
+  }
+}
+
 /** Read the stored result (a JSON string); null when there is none. */
 export function parseScheduledBackupResult(raw: unknown): ScheduledBackupResult | null {
   if (typeof raw !== 'string' || !raw) return null
   try {
-    const value = JSON.parse(raw) as Partial<ScheduledBackupResult> | null
-    if (!value || typeof value !== 'object') return null
-    if (typeof value.at !== 'string' || Number.isNaN(Date.parse(value.at))) return null
-    if (typeof value.outcome !== 'string' || !OUTCOMES.includes(value.outcome)) return null
-    return {
-      at: value.at,
-      outcome: value.outcome,
-      ...(typeof value.message === 'string' ? { message: value.message } : {})
-    }
+    return readScheduledBackupResult(JSON.parse(raw))
   } catch {
     return null
   }
+}
+
+/** True when a restart is scheduled less than 15 minutes after a backup starts. */
+export function restartFollowsBackupClosely(backup: string, restart: string | null | undefined): boolean {
+  if (!restart || !isValidBackupSchedule(backup) || !isValidRestartSchedule(restart)) return false
+  const minutes = (time: string): number => {
+    const [h, m] = time.split(':').map(Number)
+    return h * 60 + m
+  }
+  const gap = (minutes(restart) - minutes(backup) + 1440) % 1440
+  return gap < RESTART_WAIT_FOR_BACKUP_MS / 60_000
 }
 
 /** How long a scheduled restart waits for a backup in progress before going ahead. */
