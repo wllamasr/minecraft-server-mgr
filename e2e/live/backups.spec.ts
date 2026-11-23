@@ -182,17 +182,24 @@ test('backs up a running server, restores it and boots the restored world', asyn
     // Three scheduled backups from long ago. Keeping two leaves the new one and the newest of these.
     const old = ['20200101-040000-scheduled', '20200102-040000-scheduled', '20200103-040000-scheduled']
     for (const oldId of old) copyFileSync(join(backupDir, `${hot.id}.zip`), join(backupDir, `${oldId}.zip`))
-    // The next minute that is far enough away for the scheduler to have seen the schedule first.
-    const at = new Date(Date.now() + 25_000)
-    at.setMinutes(at.getMinutes() + 1, 0, 0)
-    const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
-    const saved = await api<{ backupSchedule: string; backupKeep: number; backupLastRun: string | null }>(
-      'updateServerSettings', id, { backupSchedule: hhmm, backupKeep: 2 }
-    )
-    expect(saved).toMatchObject({ backupSchedule: hhmm, backupKeep: 2, backupLastRun: null })
-    const lastRun = async (): Promise<string | undefined> =>
-      JSON.parse((await api<{ backupLastRun: string | null }>('getServer', id)).backupLastRun ?? 'null')?.outcome
-    await expect.poll(lastRun, { timeout: 3 * 60_000, intervals: [2000] }).toBe('ok')
+    const lastRun = async (): Promise<{ at: string; outcome: string } | null> =>
+      JSON.parse((await api<{ backupLastRun: string | null }>('getServer', id)).backupLastRun ?? 'null')
+    /** Schedule a backup for the next minute, wait for it, and return how it went. */
+    const runScheduled = async (): Promise<string> => {
+      const before = (await lastRun())?.at
+      // Far enough away for the scheduler to have seen the schedule first.
+      const at = new Date(Date.now() + 25_000)
+      at.setMinutes(at.getMinutes() + 1, 0, 0)
+      const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+      const saved = await api<{ backupSchedule: string; backupKeep: number }>(
+        'updateServerSettings', id, { backupSchedule: hhmm, backupKeep: 2 }
+      )
+      expect(saved).toMatchObject({ backupSchedule: hhmm, backupKeep: 2 })
+      await expect.poll(async () => (await lastRun())?.at, { timeout: 3 * 60_000, intervals: [2000] }).not.toBe(before)
+      return (await lastRun())?.outcome ?? ''
+    }
+    expect(await lastRun()).toBeNull()
+    expect(await runScheduled()).toBe('ok')
 
     const afterScheduled = await api<Backup[]>('listBackups', id)
     const scheduled = afterScheduled.filter((b) => b.kind === 'scheduled')
@@ -206,6 +213,28 @@ test('backs up a running server, restores it and boots the restored world', asyn
     // The open page learned about it by itself: the list and the result are up to date.
     await expect(page.getByTestId('backup-row')).toHaveCount(4)
     await expect(page.getByTestId('backup-last-run')).toContainText('made on')
+
+    // ── A stopped server: backed up once, then skipped until it changes ──
+    await api('stopServer', id)
+    pid = undefined
+    expect((await server()).status).toBe('stopped')
+    const scheduledIds = async (): Promise<string[]> =>
+      (await api<Backup[]>('listBackups', id)).filter((b) => b.kind === 'scheduled').map((b) => b.id)
+    // It ran since its last scheduled backup, so this one is made.
+    expect(await runScheduled()).toBe('ok')
+    const afterStopped = await api<Backup[]>('listBackups', id)
+    expect(afterStopped.find((b) => b.kind === 'scheduled')?.whileRunning).toBe(false)
+    const keptIds = await scheduledIds()
+    expect(keptIds).toHaveLength(2)
+    expect(keptIds[1]).toBe(scheduled[0].id)
+    // Nothing touched it since: no identical copy pushes an older one out.
+    expect(await runScheduled()).toBe('skipped')
+    expect(await scheduledIds()).toEqual(keptIds)
+    await expect(page.getByTestId('backup-last-run')).toContainText('skipped')
+    // A restore changes the files (to older ones): the next one is made again.
+    await api('restoreBackup', id, hot.id, { backupFirst: false })
+    expect(await runScheduled()).toBe('ok')
+    expect((await scheduledIds())[1]).toBe(keptIds[0])
     await api('updateServerSettings', id, { backupSchedule: null })
 
     // ── Deleting ───────────────────────────────────────────

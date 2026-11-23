@@ -654,15 +654,27 @@ function scheduleAutoRestart(serverId: string, name: string): void {
   cancelAutoRestart(serverId)
   const timer = setTimeout(() => {
     restartTimers.delete(serverId)
-    if (shuttingDown || runningServers.has(serverId)) return
-    try {
-      startServer(serverId)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      pushLog(serverId, `Auto-restart failed: ${message}`, 'ERROR')
-    }
+    // A backup of the files would make the start fail (and one that was
+    // running when the server crashed is of no use). Getting the server back
+    // comes first.
+    void cancelBusy(serverId, 'the server is restarting after a crash')
+      .catch(() => undefined)
+      .then(() => {
+        if (shuttingDown || runningServers.has(serverId)) return
+        try {
+          startServer(serverId)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          pushLog(serverId, `Auto-restart failed: ${message}`, 'ERROR')
+        }
+      })
   }, RESTART_DELAY_MS)
   restartTimers.set(serverId, timer)
+}
+
+/** True while a crashed server is waiting to be started again automatically. */
+export function isAutoRestartPending(serverId: string): boolean {
+  return restartTimers.has(serverId)
 }
 
 function broadcastStatus(serverId: string, status: ServerStatus): void {

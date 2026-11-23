@@ -139,8 +139,9 @@ control.
 - **FR-13e** A local server can have a **daily scheduled backup** at a local wall-clock time
   `HH:MM`, carried out by the app while it is open. Nothing is due the first time a schedule is
   seen (saving it, or opening the app, never triggers a backup). When the time passes the backup
-  starts if the server is running, stopped, or crashed without automatic restart, and no backup
-  or restore is in flight;
+  starts if the server is running, stopped, or crashed with no automatic restart pending, and no
+  backup or restore is in flight (the automatic restart after a crash cancels a backup in
+  flight);
   otherwise it is retried on each tick for 10 minutes and then recorded as missed. An occurrence
   counts as handled when its backup starts: a failed backup is not repeated. A stopped server is
   skipped when no covered file is newer than its newest scheduled backup and the file count is

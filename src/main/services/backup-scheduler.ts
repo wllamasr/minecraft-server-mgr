@@ -1,4 +1,4 @@
-import { isShuttingDown, listServers, recordScheduledBackup } from './server-manager'
+import { isAutoRestartPending, isShuttingDown, listServers, recordScheduledBackup } from './server-manager'
 import { createScheduledBackup } from './backup-manager'
 import { busyKind } from './server-busy'
 import { pushLog } from './console-manager'
@@ -84,10 +84,12 @@ function handle(server: ServerWithStatus, schedule: string, now: Date): void {
 
   // Not possible right now (starting, stopping, another backup or a restore):
   // the occurrence stays due and the next tick tries again.
-  // A crashed server that restarts by itself is about to start: a backup begun
-  // now would make that start fail. It is backed up once it is running again.
+  // A crashed server that is about to be started again is left alone: it is
+  // backed up once it is running.
   const ready =
-    server.status === 'running' || server.status === 'stopped' || (server.status === 'crashed' && !server.autoStart)
+    server.status === 'running' ||
+    server.status === 'stopped' ||
+    (server.status === 'crashed' && !isAutoRestartPending(serverId))
   if (!ready || busyKind(serverId)) return
 
   // Counted as handled from the moment it starts: a backup that fails is
