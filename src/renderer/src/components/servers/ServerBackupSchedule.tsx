@@ -143,9 +143,9 @@ export function ServerBackupSchedule({ server }: Props) {
         )}
         {enabled && timeValid && restartFollowsClosely(time, server.restartSchedule) && (
           <Alert color="yellow" variant="light">
-            This server restarts at {server.restartSchedule}, right after this backup starts. The restart will
-            wait up to 15 minutes for the backup to finish; pick an earlier backup time if your world needs
-            longer than that.
+            This server restarts at {server.restartSchedule}, less than 15 minutes after this backup time. A
+            restart that comes due during a backup waits up to 15 minutes for it; set the backup earlier if
+            your world needs longer than that, and not at the very same minute as the restart.
           </Alert>
         )}
         {last && (

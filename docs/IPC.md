@@ -165,7 +165,8 @@ Each `on*` method registers a listener and returns an unsubscribe function.
 | `onBackupProgress(cb)`             | `event:backup-progress`          | `BackupProgress`                   |
 
 `event:backup-progress` is sent for every backup and restore, whoever started it (a window or the
-schedule). The last event of each operation has `phase: 'done'`, whether it succeeded or not.
+schedule). The last event of each operation has `phase: 'done'`, whether it succeeded or not (the backup
+made before a restore is part of the restore and has no `done` of its own).
 
 ¹ per-server raw-string channel.
 

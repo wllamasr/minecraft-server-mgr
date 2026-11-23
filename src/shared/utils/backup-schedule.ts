@@ -9,7 +9,7 @@
  * starting, another backup is running) is tried again on the following ticks,
  * for {@link BACKUP_START_WINDOW_MS}. After that the occurrence is missed.
  */
-import { isValidRestartSchedule, restartOccurrences } from './restart-schedule'
+import { isValidRestartSchedule, restartOccurrences, RESTART_LATE_TOLERANCE_MS } from './restart-schedule'
 
 /** How long after its time a scheduled backup may still be started. */
 export const BACKUP_START_WINDOW_MS = 10 * 60_000
@@ -133,6 +133,9 @@ export function deferredRestartAction(
   backupRunning: boolean
 ): 'wait' | 'restart' | 'drop' {
   if (!serverRunning) return 'drop'
+  // Noticed long after the wait was over (the computer slept): too late, like
+  // any other scheduled restart.
+  if (now - deadline > RESTART_LATE_TOLERANCE_MS) return 'drop'
   if (backupRunning && now < deadline) return 'wait'
   return 'restart'
 }

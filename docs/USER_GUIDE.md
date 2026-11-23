@@ -153,11 +153,12 @@ After each scheduled backup, the oldest scheduled backups beyond that number are
 backups marked *scheduled* are ever deleted this way. If you lower the number, the extra ones go
 after the next scheduled backup, not when you save.
 
-- Scheduled backups only run while the app is open and the computer is awake. One that was
-  missed is not made later.
+- Scheduled backups only run while the app is open and the computer is awake. One whose time
+  passed more than 10 minutes ago is not made later.
 - If the server is starting, stopping or already being backed up at that time, the app keeps
   trying for 10 minutes and then gives that day's backup up.
 - A stopped server is backed up only if its files changed since its last scheduled backup.
+- A server that crashed and restarts by itself is backed up once it is running again.
 - The line under the settings tells how the last scheduled backup went, including the reason
   when it failed or was missed. Check it now and then: nobody is watching at night.
 - If the server also has a scheduled restart, set the backup some time before it. A restart that

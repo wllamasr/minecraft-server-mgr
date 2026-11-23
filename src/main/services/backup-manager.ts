@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { existsSync } from 'fs'
-import { mkdir, readdir, rm, stat, statfs } from 'fs/promises'
+import { mkdir, readdir, rm, stat, statfs, utimes } from 'fs/promises'
 import { dirname, join } from 'path'
 import { eq } from 'drizzle-orm'
 import { getDatabase } from '../database/client'
@@ -295,7 +295,7 @@ async function newestScheduled(serverId: string): Promise<{ at: Date | null; fil
 }
 
 /** Delete the scheduled backups beyond the number to keep. Never fails the backup. */
-async function pruneScheduled(serverId: string, keep: number, justCreated: string): Promise<void> {
+async function pruneScheduled(serverId: string, keep: number, justCreated?: string): Promise<void> {
   try {
     const dir = backupDir(serverId)
     const ids = (await readdir(dir)).filter((name) => name.endsWith('.zip')).map((name) => name.slice(0, -4))
@@ -340,6 +340,8 @@ async function runBackup(
     const last = await newestScheduled(serverId)
     if (!planChangedSince(plan, last.at, last.fileCount)) {
       pushLog(serverId, 'Scheduled backup skipped: nothing has changed since the last one.', 'INFO')
+      // A lowered number to keep still takes effect.
+      await pruneScheduled(serverId, scheduled.keep)
       return null
     }
   }
@@ -391,7 +393,10 @@ async function runBackup(
       plan.skipped.length ? 'WARN' : 'INFO'
     )
     if (plan.skipped.length) log.warn(`[Backup] Skipped in ${serverId}: ${plan.skipped.slice(0, 20).join(', ')}`)
-    // Only now that the new backup is whole do old ones go.
+    // Only now that the new backup is whole do old ones go. Saving is turned
+    // back on first: deleting many archives must not keep the world unsaved.
+    resumeSaving?.()
+    resumeSaving = undefined
     if (scheduled) await pruneScheduled(serverId, scheduled.keep, id)
     return info
   } catch (err) {
@@ -539,6 +544,11 @@ async function runRestore(
       leftover = err
     }
     pushLog(serverId, `Backup ${backupId} restored: ${fileCount} file(s).`, 'INFO')
+    // Restored files carry the dates they had in the backup, so the server
+    // would look untouched to the "skip if nothing changed" rule of scheduled
+    // backups. Mark the change on one file that every server has.
+    const touched = new Date()
+    await utimes(join(serverDir, 'server.properties'), touched, touched).catch(() => undefined)
     try {
       reconcileInstalledMods(serverId, serverDir, server.modLoader ?? null)
     } catch (err) {

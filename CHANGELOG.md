@@ -33,8 +33,8 @@ All notable changes to this project are documented here. The format follows
     Backups made by hand or before a restore are never deleted for you.
   - A backup that cannot start at its time (the server is starting or stopping, another backup is
     running) is tried again for 10 minutes and then counts as missed. Like scheduled restarts,
-    schedules only run while the app is open and the computer is awake; a missed backup is not
-    caught up.
+    schedules only run while the app is open and the computer is awake; a backup whose time
+    passed more than 10 minutes ago is not caught up.
   - A stopped server is backed up only if its files changed since its last scheduled backup, so
     identical copies do not push the useful ones out.
   - A scheduled restart that comes due while a backup is running waits for it, for up to 15

@@ -127,5 +127,8 @@ describe('deferredRestartAction', () => {
     expect(deferredRestartAction(5000, 5000, true, true)).toBe('restart')
     expect(deferredRestartAction(1000, 5000, false, true)).toBe('drop')
     expect(deferredRestartAction(1000, 5000, false, false)).toBe('drop')
+    // The computer slept through the wait: no restart hours later.
+    expect(deferredRestartAction(5000 + 3_600_000, 5000, true, false)).toBe('drop')
+    expect(deferredRestartAction(5000 + 30_000, 5000, true, true)).toBe('restart')
   })
 })
