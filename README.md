@@ -45,7 +45,7 @@ from a single window. No batch scripts, no manual EULA edits.
 
 ### Prerequisites
 
-- **Node.js 18+** (developed on Node 24).
+- **Node.js 20 LTS or newer** (CI runs on Node 20).
 - **A Java runtime** to actually run servers — Java 21 for Minecraft 1.20.5+, Java 17 for
   1.17–1.20, Java 8 for older releases. The app detects installed JDKs and links to
   [Adoptium](https://adoptium.net/) if none is found.
@@ -66,7 +66,7 @@ npm run dev
 ### Build & package
 
 ```bash
-npm run build      # type-check-free bundle of main / preload / renderer into out/
+npm run build      # bundle main / preload / renderer into out/ (no type-check; run npm run typecheck)
 npm run package    # build + produce a Windows installer via electron-builder
 ```
 
@@ -98,6 +98,7 @@ src/
 
 ## 📚 Documentation
 
+- [User guide](docs/USER_GUIDE.md) — install, create servers, mods, troubleshooting.
 - [Architecture](docs/ARCHITECTURE.md) — process model, data flow, and how the pieces fit.
 - [Specification](docs/SPEC.md) — functional spec, data model, and user flows.
 - [IPC contract](docs/IPC.md) — every channel and event between main and renderer.
@@ -120,7 +121,10 @@ telemetry are implemented. Areas open for contribution:
 ## 🤝 Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Please open an issue to
-discuss substantial changes before starting.
+discuss substantial changes before starting. All participants follow the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+To report a security vulnerability, do not open a public issue; follow [SECURITY.md](SECURITY.md).
 
 ## 📄 License
 
