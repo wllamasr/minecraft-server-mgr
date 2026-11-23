@@ -187,6 +187,31 @@ func TestWriteCancelledLeavesNothing(t *testing.T) {
 	}
 }
 
+func TestAFileThatGrowsDuringTheBackupStaysRestorable(t *testing.T) {
+	dir := sampleServer(t)
+	plan, err := MakePlan(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A running server appends to a file after it was counted.
+	grown := filepath.Join(dir, "plugins", "Thing", "config.yml")
+	if err := os.WriteFile(grown, []byte("a: 1\n"+strings.Repeat("more\n", 100)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "b.zip")
+	if err := Write(context.Background(), plan, dest, "{}", nil); err != nil {
+		t.Fatal(err)
+	}
+	stage := t.TempDir()
+	n, err := Extract(context.Background(), dest, stage, plan.TotalBytes, nil)
+	if err != nil || n != len(plan.Files) {
+		t.Fatalf("the backup cannot be restored: %d files, %v", n, err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(stage, "plugins", "Thing", "config.yml")); string(got) != "a: 1\n" {
+		t.Fatalf("content = %q", got)
+	}
+}
+
 func TestWriteFailsWhenAFileIsGone(t *testing.T) {
 	dir := sampleServer(t)
 	plan, err := MakePlan(context.Background(), dir)

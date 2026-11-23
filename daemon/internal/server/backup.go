@@ -217,6 +217,11 @@ func (m *Manager) beginOperation(id, kind string) (*operation, store.Server, *ru
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Again under the lock: a delete that finished in between has lifted its
+	// "deleting" mark, and an operation must not bring the server's folders back.
+	if _, err := m.store.Get(id); err != nil {
+		return nil, store.Server{}, nil, err
+	}
 	refuse := func(msg string) (*operation, store.Server, *runningServer, error) {
 		return nil, store.Server{}, nil, conflictError(msg)
 	}
@@ -422,6 +427,10 @@ func (m *Manager) runBackup(op *operation, s store.Server, rs *runningServer, ki
 	// The server went away while its files were being read: it writes the
 	// world on its way out, so the copy may hold files from two moments.
 	if hot {
+		if err := backup.Cancelled(op.ctx); err != nil {
+			_ = os.Remove(zipPath)
+			return "", err
+		}
 		select {
 		case <-rs.exited:
 			_ = os.Remove(zipPath)

@@ -188,7 +188,7 @@ paths:
       responses:
         "200":
           description: >-
-            JSON array of {id, serverId, kind: manual|pre-restore, createdAt, sizeBytes,
+            JSON array of {id, serverId, kind: manual|pre-restore|scheduled, createdAt, sizeBytes,
             fileCount, minecraftVersion, whileRunning}. The last three come from the manifest in
             the archive and are omitted when it cannot be read.
         "404": { description: Unknown server }
@@ -208,7 +208,9 @@ paths:
         "409":
           description: >-
             Not now: another backup or a restore is running, or the server is starting, stopping,
-            restarting, being provisioned or deleted, or the daemon is shutting down
+            restarting, about to restart after a crash, being provisioned or deleted, or the
+            daemon is shutting down. (The daemon itself only makes manual and pre-restore
+            backups; "scheduled" is listed if such an archive is present.)
   /v1/servers/{id}/backups/{backupId}:
     delete:
       summary: Delete a backup

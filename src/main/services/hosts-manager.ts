@@ -189,13 +189,15 @@ export function remoteSoftwareVersions(hostId: string, platform: string): Promis
 
 // ─── backups (made, kept and restored on the host) ─────────
 
-function backupsPath(serverId: string, backupId?: string): string {
+function backupsPath(serverId: string): string {
   if (typeof serverId !== 'string' || !serverId) throw new Error('Invalid server')
-  const base = `/v1/servers/${encodeURIComponent(serverId)}/backups`
-  if (backupId === undefined) return base
+  return `/v1/servers/${encodeURIComponent(serverId)}/backups`
+}
+
+function backupPath(serverId: string, backupId: unknown): string {
   // Ids end up in the request path: only what a backup id looks like is sent.
   if (!isBackupId(backupId)) throw new Error('Invalid backup')
-  return `${base}/${backupId}`
+  return `${backupsPath(serverId)}/${backupId}`
 }
 
 /** Tell the answer of a daemon apart from "this route does not exist there". */
@@ -228,12 +230,12 @@ export async function restoreRemoteBackup(
   const res = await remoteRequest<{ operationId: string }>(
     connFor(hostId),
     'POST',
-    `${backupsPath(serverId, backupId)}/restore`,
+    `${backupPath(serverId, backupId)}/restore`,
     { backupFirst: backupFirst !== false }
   ).catch(plainDaemonError)
   return { operationId: res.operationId }
 }
 
 export async function deleteRemoteBackup(hostId: string, serverId: string, backupId: string): Promise<void> {
-  await remoteRequest(connFor(hostId), 'DELETE', backupsPath(serverId, backupId)).catch(plainDaemonError)
+  await remoteRequest(connFor(hostId), 'DELETE', backupPath(serverId, backupId)).catch(plainDaemonError)
 }

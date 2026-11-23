@@ -268,7 +268,11 @@ func copyFile(ctx context.Context, w io.Writer, file File, done *int64, total in
 		return fmt.Errorf("could not read %s: %w", file.Rel, err)
 	}
 	defer src.Close()
-	if _, err := io.Copy(w, &ctxReader{ctx: ctx, r: src, done: done, total: total, progress: progress}); err != nil {
+	// Never more than the size the plan (and so the manifest) counted: a file
+	// the running server appends to meanwhile must not make the archive hold
+	// more than it says, which a restore would refuse.
+	limited := io.LimitReader(src, file.Size)
+	if _, err := io.Copy(w, &ctxReader{ctx: ctx, r: limited, done: done, total: total, progress: progress}); err != nil {
 		if errors.Is(err, ErrCancelled) {
 			return err
 		}

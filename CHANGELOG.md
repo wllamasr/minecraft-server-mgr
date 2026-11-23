@@ -57,7 +57,8 @@ All notable changes to this project are documented here. The format follows
     stopping `msmd`. A restore that is already replacing files is finished first. A server
     cannot be started while a backup of it (stopped) or a restore is running.
   - A backup or restore keeps running when the app is closed; the window shows the progress and,
-    when opened later, how the last one ended (until `msmd` is restarted).
+    when opened later, why the last one failed or was cancelled, if it did (until `msmd` is
+    restarted).
   - Not included yet: scheduled backups and automatic deletion of old backups on remote hosts.
     Remote backups are only made when you ask, and are never deleted for you.
 - `msmd` 0.2.0: `GET`/`POST /v1/servers/{id}/backups`,

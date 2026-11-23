@@ -223,8 +223,8 @@ Each server on a remote host has a **Backups** button (the archive icon). It ope
   under msmd's data folder. It is not copied to this computer. To keep a copy somewhere else,
   copy the `.zip` files from the host yourself.
 - A backup or a restore keeps running when you close the window or the app. Open the window
-  again to see the progress, or how the last one ended. (msmd forgets the outcome when it is
-  restarted; the list of backups always shows what is there.)
+  again to see the progress or, if the last one failed or was cancelled, why. (msmd forgets
+  that when it is restarted; the list of backups always shows what is there.)
 - Stopping or restarting the server cancels a backup in progress, and so does stopping `msmd`.
   A restore that has started replacing files is always finished first.
 - **There are no scheduled backups on remote hosts yet**, and nothing deletes old backups for

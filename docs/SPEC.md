@@ -164,7 +164,8 @@ control.
   operation is asynchronous (the request returns an operation id; the server object reports the
   operation in flight and how the last one ended, the latter only until the daemon restarts), it
   does not depend on the app staying open, and a restore that has begun replacing files is not
-  cancelled but waited for. Scheduled backups and retention (FR-13e, FR-13f) do not exist on
+  cancelled but waited for, and there are no mod records to reconcile after a restore (the app
+  keeps none for remote servers). Scheduled backups and retention (FR-13e, FR-13f) do not exist on
   remote hosts.
 
 ### 4.3 Java resolution

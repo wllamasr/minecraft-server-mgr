@@ -160,10 +160,9 @@ func TestBackupOfARunningServerPausesSaving(t *testing.T) {
 	if !res.OK || res.Kind != "backup" || !backup.ValidID(res.BackupID) {
 		t.Fatalf("result = %+v\n%s", res, logs(m, "a"))
 	}
-	// Saving is paused before anything is read, and turned back on after.
-	if got := strings.Join(commands(cmdLog), " "); got != "save-off save-all-flush save-on" {
-		t.Fatalf("commands = %q", got)
-	}
+	// Saving is paused before anything is read, and turned back on after
+	// (the server records that a moment after the backup is reported done).
+	waitFor(t, "save-on", func() bool { return strings.Join(commands(cmdLog), " ") == "save-off save-all-flush save-on" })
 
 	list, err := m.ListBackups("a")
 	if err != nil || len(list) != 1 {
@@ -271,10 +270,23 @@ func TestStopCancelsABackup(t *testing.T) {
 	if res.OK || !res.Cancelled || !strings.Contains(res.Error, "the server is stopping") {
 		t.Fatalf("result = %+v", res)
 	}
-	// Saving is turned back on before the server is told to stop.
-	got := strings.Join(commands(cmdLog), " ")
-	if !strings.HasPrefix(got, "save-off save-all-flush save-on stop") {
+	// Saving is turned back on before the server is told to stop. Both the
+	// stop and the cancelled backup may say so, in either order.
+	got := commands(cmdLog)
+	stop := -1
+	for i, c := range got {
+		if c == "stop" {
+			stop = i
+			break
+		}
+	}
+	if len(got) < 4 || got[0] != "save-off" || got[1] != "save-all-flush" || stop < 3 {
 		t.Fatalf("commands = %q", got)
+	}
+	for _, c := range got[2:stop] {
+		if c != "save-on" {
+			t.Fatalf("commands = %q", got)
+		}
 	}
 	if left := archives(m, "a"); len(left) != 0 {
 		t.Fatalf("left behind: %v", left)

@@ -51,11 +51,15 @@ export function RemoteBackupsModal({ host, server, onClose, onRefresh }: Props) 
   const working = operation !== null || awaiting !== null
 
   // The server list is polled every few seconds; follow an operation closer.
+  // (Through a ref: the caller passes a new function on every render, which
+  // must not restart the timer.)
+  const refresh = useRef(onRefresh)
+  refresh.current = onRefresh
   useEffect(() => {
     if (!working) return
-    const timer = setInterval(onRefresh, 1000)
+    const timer = setInterval(() => refresh.current(), 1000)
     return () => clearInterval(timer)
-  }, [working, onRefresh])
+  }, [working])
 
   // An operation that is over (started here or not) may have changed the list.
   const seenOperation = useRef<string | null>(operation?.id ?? null)
