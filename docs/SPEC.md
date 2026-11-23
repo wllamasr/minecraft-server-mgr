@@ -136,6 +136,22 @@ control.
   cancel a backup in flight (saving is turned back on before the stop command is sent); a
   restore that has begun replacing files runs to completion first. A server cannot be started
   during a restore, nor during a backup made while it was stopped.
+- **FR-13e** A local server can have a **daily scheduled backup** at a local wall-clock time
+  `HH:MM`, carried out by the app while it is open. Nothing is due the first time a schedule is
+  seen (saving it, or opening the app, never triggers a backup). When the time passes the backup
+  starts if the server is running, stopped or crashed and no backup or restore is in flight;
+  otherwise it is retried on each tick for 10 minutes and then recorded as missed. An occurrence
+  counts as handled when its backup starts: a failed backup is not repeated. A stopped server is
+  skipped when no covered file is newer than its newest scheduled backup and the file count is
+  the same. The outcome of the last occurrence (`ok`, `skipped`, `missed`, `failed`, with the
+  reason) is stored on the server and shown in the Backups tab.
+- **FR-13f** **Retention:** each server keeps the newest *N* scheduled backups (1–365, default
+  7). Older scheduled backups are deleted only after a new scheduled backup is complete, never
+  the one just made, and a failure to delete does not fail the backup. Manual and pre-restore
+  backups are never deleted automatically. Lowering *N* takes effect at the next scheduled
+  backup.
+- **FR-13g** A scheduled restart that comes due while a backup is running waits for the backup,
+  for at most 15 minutes, and then restarts (cancelling the backup if it is still running).
 
 ### 4.3 Java resolution
 

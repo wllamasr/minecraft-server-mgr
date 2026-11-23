@@ -42,7 +42,10 @@ export function runMigrations(): void {
       modpack_version_id TEXT,
       modpack_name TEXT,
       jvm_profile TEXT NOT NULL DEFAULT 'default',
-      restart_schedule TEXT
+      restart_schedule TEXT,
+      backup_schedule TEXT,
+      backup_keep INTEGER NOT NULL DEFAULT 7,
+      backup_last_run TEXT
     );
 
     CREATE TABLE IF NOT EXISTS installed_mods (
@@ -90,6 +93,9 @@ export function runMigrations(): void {
   addServerColumn('modpack_name', 'modpack_name TEXT')
   addServerColumn('jvm_profile', "jvm_profile TEXT NOT NULL DEFAULT 'default'")
   addServerColumn('restart_schedule', 'restart_schedule TEXT')
+  addServerColumn('backup_schedule', 'backup_schedule TEXT')
+  addServerColumn('backup_keep', 'backup_keep INTEGER NOT NULL DEFAULT 7')
+  addServerColumn('backup_last_run', 'backup_last_run TEXT')
 
   sqlite.close()
   log.info('[DB] Migrations completed successfully')

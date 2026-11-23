@@ -25,6 +25,14 @@ import { isReleaseVersion } from '../../shared/utils/minecraft-version'
 import { isValidBuildId } from '../../shared/utils/server-software'
 import { formatProgress } from '../../shared/utils/format'
 import { isValidRestartSchedule } from '../../shared/utils/restart-schedule'
+import {
+  BACKUP_KEEP_DEFAULT,
+  BACKUP_KEEP_MAX,
+  BACKUP_KEEP_MIN,
+  isValidBackupKeep,
+  isValidBackupSchedule,
+  type ScheduledBackupResult
+} from '../../shared/utils/backup-schedule'
 import { isAllowedMrpackUrl, MRPACK_HOST } from '../../shared/utils/modpack'
 import type {
   ServerInstance,
@@ -157,7 +165,10 @@ export function createServer(input: CreateServerInput): ServerInstance {
     modpackVersionId: input.modpack?.versionId ?? null,
     modpackName: input.modpack?.name ?? null,
     jvmProfile: input.jvmProfile ?? 'default',
-    restartSchedule: null
+    restartSchedule: null,
+    backupSchedule: null,
+    backupKeep: BACKUP_KEEP_DEFAULT,
+    backupLastRun: null
   }
 
   db.insert(schema.servers).values(server).run()
@@ -487,18 +498,44 @@ export function restartServer(serverId: string): Promise<void> {
 export function updateServerSettings(serverId: string, input: UpdateServerSettingsInput): ServerWithStatus {
   if (!input || typeof input !== 'object') throw new Error('Invalid settings')
 
-  const changes: { restartSchedule?: string | null; updatedAt: string } = { updatedAt: new Date().toISOString() }
+  const changes: {
+    restartSchedule?: string | null
+    backupSchedule?: string | null
+    backupKeep?: number
+    updatedAt: string
+  } = { updatedAt: new Date().toISOString() }
   if (input.restartSchedule !== undefined) {
     if (input.restartSchedule !== null && !isValidRestartSchedule(input.restartSchedule)) {
       throw new Error('Restart time must be HH:MM in 24-hour format, for example 04:30')
     }
     changes.restartSchedule = input.restartSchedule
   }
+  if (input.backupSchedule !== undefined) {
+    if (input.backupSchedule !== null && !isValidBackupSchedule(input.backupSchedule)) {
+      throw new Error('Backup time must be HH:MM in 24-hour format, for example 04:30')
+    }
+    changes.backupSchedule = input.backupSchedule
+  }
+  if (input.backupKeep !== undefined) {
+    if (!isValidBackupKeep(input.backupKeep)) {
+      throw new Error(`The number of backups to keep must be a whole number from ${BACKUP_KEEP_MIN} to ${BACKUP_KEEP_MAX}`)
+    }
+    changes.backupKeep = input.backupKeep
+  }
 
   const db = getDatabase()
   const result = db.update(schema.servers).set(changes).where(eq(schema.servers.id, serverId)).run()
   if (result.changes === 0) throw new Error(`Server not found: ${serverId}`)
   return getServer(serverId) as ServerWithStatus
+}
+
+/** Remember how the last scheduled backup of a server went. */
+export function recordScheduledBackup(serverId: string, result: ScheduledBackupResult): void {
+  getDatabase()
+    .update(schema.servers)
+    .set({ backupLastRun: JSON.stringify(result) })
+    .where(eq(schema.servers.id, serverId))
+    .run()
 }
 
 /** True once the app has begun quitting. */

@@ -12,6 +12,7 @@ import { ServerConsole } from '../../components/servers/ServerConsole'
 import { ServerPropertiesEditor } from '../../components/servers/ServerPropertiesEditor'
 import { ServerRestartSchedule } from '../../components/servers/ServerRestartSchedule'
 import { ServerBackups } from '../../components/servers/ServerBackups'
+import { ServerBackupSchedule } from '../../components/servers/ServerBackupSchedule'
 import { useState, useEffect } from 'react'
 
 export const Route = createFileRoute('/servers/$serverId')({
@@ -312,7 +313,10 @@ function ServerDetailPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="backups" pt="xl">
-          <ServerBackups server={server} />
+          <Stack gap="lg">
+            <ServerBackups server={server} />
+            <ServerBackupSchedule server={server} />
+          </Stack>
         </Tabs.Panel>
 
         <Tabs.Panel value="settings" pt="xl">

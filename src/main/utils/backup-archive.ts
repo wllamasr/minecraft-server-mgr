@@ -413,6 +413,18 @@ export async function swapIntoServerDir(serverDir: string, stageDir: string, asi
   }
 }
 
+/**
+ * Whether the files of a plan differ from what a backup made at `since` with
+ * `fileCount` files holds: a file written later, or a different number of
+ * files (one was added with an old date, or removed). Unknown counts as
+ * changed, so a backup is made when in doubt.
+ */
+export function planChangedSince(plan: BackupPlan, since: Date | null, fileCount: number | undefined): boolean {
+  if (!since || Number.isNaN(since.getTime()) || fileCount === undefined) return true
+  if (plan.files.length !== fileCount) return true
+  return plan.files.some((file) => file.mtime.getTime() > since.getTime())
+}
+
 /** The swap went through; only the folder with the replaced files is still there. */
 export class RestoreLeftoverError extends Error {
   constructor(message: string) {

@@ -176,9 +176,41 @@ test('backs up a running server, restores it and boots the restored world', asyn
     await expect(page.getByTestId('backup-row')).toHaveCount(2)
     await expect(page.getByRole('button', { name: 'Restore backup' }).first()).toBeDisabled()
 
+    // ── A scheduled backup, and what is kept ───────────────
+    expect(await failure('updateServerSettings', id, { backupKeep: 0 })).toMatch(/whole number/)
+    expect(await failure('updateServerSettings', id, { backupSchedule: '4:30' })).toMatch(/HH:MM/)
+    // Three scheduled backups from long ago. Keeping two leaves the new one and the newest of these.
+    const old = ['20200101-040000-scheduled', '20200102-040000-scheduled', '20200103-040000-scheduled']
+    for (const oldId of old) copyFileSync(join(backupDir, `${hot.id}.zip`), join(backupDir, `${oldId}.zip`))
+    // The next minute that is far enough away for the scheduler to have seen the schedule first.
+    const at = new Date(Date.now() + 25_000)
+    at.setMinutes(at.getMinutes() + 1, 0, 0)
+    const hhmm = `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+    const saved = await api<{ backupSchedule: string; backupKeep: number; backupLastRun: string | null }>(
+      'updateServerSettings', id, { backupSchedule: hhmm, backupKeep: 2 }
+    )
+    expect(saved).toMatchObject({ backupSchedule: hhmm, backupKeep: 2, backupLastRun: null })
+    const lastRun = async (): Promise<string | undefined> =>
+      JSON.parse((await api<{ backupLastRun: string | null }>('getServer', id)).backupLastRun ?? 'null')?.outcome
+    await expect.poll(lastRun, { timeout: 3 * 60_000, intervals: [2000] }).toBe('ok')
+
+    const afterScheduled = await api<Backup[]>('listBackups', id)
+    const scheduled = afterScheduled.filter((b) => b.kind === 'scheduled')
+    expect(scheduled).toHaveLength(2)
+    expect(scheduled[0].whileRunning).toBe(true)
+    expect(old).not.toContain(scheduled[0].id)
+    expect(scheduled[1].id).toBe('20200103-040000-scheduled')
+    // Backups made by hand or before a restore are never deleted automatically.
+    expect(afterScheduled.filter((b) => b.kind !== 'scheduled').map((b) => b.id)).toEqual([listed[0].id, hot.id])
+    expect((await server()).status).toBe('running')
+    // The open page learned about it by itself: the list and the result are up to date.
+    await expect(page.getByTestId('backup-row')).toHaveCount(4)
+    await expect(page.getByTestId('backup-last-run')).toContainText('made on')
+    await api('updateServerSettings', id, { backupSchedule: null })
+
     // ── Deleting ───────────────────────────────────────────
     await api('deleteBackup', id, listed[0].id)
-    expect((await api<Backup[]>('listBackups', id)).map((b) => b.id)).toEqual([hot.id])
+    expect((await api<Backup[]>('listBackups', id)).map((b) => b.id)).not.toContain(listed[0].id)
     await api('deleteServer', id)
     pid = undefined
     expect(existsSync(backupDir)).toBe(false)

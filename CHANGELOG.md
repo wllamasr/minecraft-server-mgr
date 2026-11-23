@@ -26,10 +26,24 @@ All notable changes to this project are documented here. The format follows
   - Stopping, restarting or deleting a server, or closing the app, cancels a backup in progress.
     A server cannot be started while a backup of it (stopped) or a restore is in progress.
   - Deleting a server deletes its backups too; the confirmation says so.
-  - Not included yet: scheduled backups, automatic clean-up of old backups, and backups of
-    servers on remote hosts.
+  - Not included yet: backups of servers on remote hosts.
+- **Scheduled backups** for local servers, in the same tab: back a server up every day at a fixed
+  time and keep only the last N scheduled backups (7 by default).
+  - Only scheduled backups are deleted automatically, and only after a new one is complete.
+    Backups made by hand or before a restore are never deleted for you.
+  - A backup that cannot start at its time (the server is starting or stopping, another backup is
+    running) is tried again for 10 minutes and then counts as missed. Like scheduled restarts,
+    schedules only run while the app is open and the computer is awake; a missed backup is not
+    caught up.
+  - A stopped server is backed up only if its files changed since its last scheduled backup, so
+    identical copies do not push the useful ones out.
+  - A scheduled restart that comes due while a backup is running waits for it, for up to 15
+    minutes, instead of cancelling it.
+  - The tab shows how the last scheduled backup went (made, skipped, missed or failed, and why),
+    and follows backups it did not start itself: progress, the list and the buttons update.
 - IPC channels `backup:list`, `backup:create`, `backup:delete`, `backup:restore` and the event
-  `event:backup-progress`. See [docs/IPC.md](docs/IPC.md).
+  `event:backup-progress`; `server:update-settings` accepts `backupSchedule` and `backupKeep`.
+  See [docs/IPC.md](docs/IPC.md).
 
 - **Paper**, **Purpur** and **Folia** server engines (plugin platforms aimed at large player
   counts) in the create-server wizard, for local servers. The Minecraft version list is fetched

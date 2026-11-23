@@ -23,7 +23,13 @@ export const servers = sqliteTable('servers', {
   // JVM argument profile: 'default' (heap only) or 'aikar' (tuned G1GC flags)
   jvmProfile: text('jvm_profile').notNull().default('default'),
   // Daily scheduled restart, local wall-clock time "HH:MM"; null = none
-  restartSchedule: text('restart_schedule')
+  restartSchedule: text('restart_schedule'),
+  // Daily scheduled backup, local wall-clock time "HH:MM"; null = none
+  backupSchedule: text('backup_schedule'),
+  // How many scheduled backups are kept
+  backupKeep: integer('backup_keep').notNull().default(7),
+  // Result of the last scheduled backup (JSON), null until one was due
+  backupLastRun: text('backup_last_run')
 })
 
 // ─── Installed Mods ─────────────────────────────────────────

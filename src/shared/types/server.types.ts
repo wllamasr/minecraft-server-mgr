@@ -44,12 +44,25 @@ export interface ServerInstance {
   jvmProfile: JvmProfile
   /** Daily scheduled restart as local wall-clock time "HH:MM", or null for none. */
   restartSchedule: string | null
+  /** Daily scheduled backup as local wall-clock time "HH:MM", or null for none. */
+  backupSchedule: string | null
+  /** How many scheduled backups are kept; older ones are deleted after each new one. */
+  backupKeep: number
+  /**
+   * How the last scheduled backup went: a JSON string, read with
+   * `parseScheduledBackupResult`. Null when none has been due yet.
+   */
+  backupLastRun: string | null
 }
 
 /** Settings of an existing server that can be changed after creation. */
 export interface UpdateServerSettingsInput {
   /** "HH:MM" (24 h) to restart the server every day at that time; null to turn it off. */
   restartSchedule?: string | null
+  /** "HH:MM" (24 h) to back the server up every day at that time; null to turn it off. */
+  backupSchedule?: string | null
+  /** How many scheduled backups to keep (1 to 365). */
+  backupKeep?: number
 }
 
 export interface CreateServerInput {

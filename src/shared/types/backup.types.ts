@@ -1,8 +1,8 @@
 /**
- * Why a backup was made: by hand, or automatically right before a restore so
- * the restore itself can be undone.
+ * Why a backup was made: by hand, automatically right before a restore so
+ * the restore itself can be undone, or by the daily schedule.
  */
-export type BackupKind = 'manual' | 'pre-restore'
+export type BackupKind = 'manual' | 'pre-restore' | 'scheduled'
 
 export interface BackupInfo {
   /** Identifies the backup within its server, e.g. `20261123-153000-manual`. */
@@ -23,8 +23,11 @@ export interface BackupInfo {
 export interface BackupProgress {
   serverId: string
   operation: 'backup' | 'restore'
-  /** `saving`: waiting for the server to write the world to disk. */
-  phase: 'saving' | 'copying' | 'replacing'
+  /**
+   * `saving`: waiting for the server to write the world to disk. `done`: the
+   * operation is over, whether it worked or not (sent once, last).
+   */
+  phase: 'saving' | 'copying' | 'replacing' | 'done'
   doneBytes: number
   totalBytes: number
 }

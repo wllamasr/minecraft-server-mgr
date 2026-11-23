@@ -8,6 +8,7 @@ import {
   extractArchive,
   isBackedUpTopLevel,
   planBackup,
+  planChangedSince,
   readArchiveComment,
   restorableManifest,
   swapIntoServerDir,
@@ -259,6 +260,23 @@ describe('extractArchive', () => {
     const stage = join(work, 'stage')
     mkdirSync(stage)
     await expect(extractArchive(zip, stage)).rejects.toThrow()
+  })
+})
+
+describe('planChangedSince', () => {
+  it('tells an untouched server from one whose files changed', async () => {
+    const plan = await planBackup(server)
+    const later = new Date(Date.now() + 60_000)
+    expect(planChangedSince(plan, later, plan.files.length)).toBe(false)
+    // A file written after the backup.
+    expect(planChangedSince(plan, new Date(Date.now() - 3_600_000), plan.files.length)).toBe(true)
+    // A file removed, or added with an old date.
+    expect(planChangedSince(plan, later, plan.files.length + 1)).toBe(true)
+    expect(planChangedSince(plan, later, plan.files.length - 1)).toBe(true)
+    // Nothing to compare with: back up.
+    expect(planChangedSince(plan, null, plan.files.length)).toBe(true)
+    expect(planChangedSince(plan, later, undefined)).toBe(true)
+    expect(planChangedSince(plan, new Date(NaN), plan.files.length)).toBe(true)
   })
 })
 

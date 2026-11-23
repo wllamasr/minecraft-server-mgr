@@ -133,15 +133,36 @@ have moved back what you need and removed it.
 
 Things to know:
 
-- Backups are only made when you ask. There are no scheduled backups yet, and old backups are
-  never deleted automatically, so keep an eye on disk space. Each backup is about the size of the
-  world.
+- Each backup is about the size of the world. Backups you make by hand, and the ones made before
+  a restore, are never deleted automatically, so keep an eye on disk space.
 - Backups are stored on the same computer (see
   [Settings and data locations](#11-settings-and-data-locations)). They protect against a broken
   world or a bad change, not against a failed disk; copy the zip files somewhere else for that.
 - Stopping or restarting the server, or closing the app, cancels a backup that is in progress.
 - Deleting a server deletes its backups.
 - Backups are for local servers. Servers on remote hosts do not have them yet.
+
+#### Scheduled backups
+
+Below the list, **Scheduled backups** makes a backup every day without you asking:
+
+1. Turn on **Back up every day** and pick the **Time** (this computer's local time).
+2. Set **Backups to keep** (7 by default) and click **Save**.
+
+After each scheduled backup, the oldest scheduled backups beyond that number are deleted. Only
+backups marked *scheduled* are ever deleted this way. If you lower the number, the extra ones go
+after the next scheduled backup, not when you save.
+
+- Scheduled backups only run while the app is open and the computer is awake. One that was
+  missed is not made later.
+- If the server is starting, stopping or already being backed up at that time, the app keeps
+  trying for 10 minutes and then gives that day's backup up.
+- A stopped server is backed up only if its files changed since its last scheduled backup.
+- The line under the settings tells how the last scheduled backup went, including the reason
+  when it failed or was missed. Check it now and then: nobody is watching at night.
+- If the server also has a scheduled restart, set the backup some time before it. A restart that
+  comes due during a backup waits up to 15 minutes for it; after that the restart goes ahead and
+  the backup is cancelled.
 
 ## 5. The live console
 

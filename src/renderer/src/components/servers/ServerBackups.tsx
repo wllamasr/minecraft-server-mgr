@@ -14,6 +14,7 @@ interface Props {
 function describeProgress(progress: BackupProgress): string {
   if (progress.phase === 'saving') return 'Waiting for the server to save the world…'
   if (progress.phase === 'replacing') return 'Replacing the server files…'
+  if (progress.phase === 'done') return 'Finishing…'
   const verb = progress.operation === 'backup' ? 'Copying' : 'Unpacking'
   return `${verb} ${formatBytes(progress.doneBytes)} of ${formatBytes(progress.totalBytes)}`
 }
@@ -29,12 +30,23 @@ export function ServerBackups({ server }: Props) {
     queryFn: () => window.api.listBackups(serverId)
   })
 
+  // Progress also arrives for operations this page did not start (a scheduled
+  // backup, another window): it is what tells that one is running and when it
+  // is over.
   useEffect(
     () =>
       window.api.onBackupProgress((p) => {
-        if (p.serverId === serverId) setProgress(p)
+        if (p.serverId !== serverId) return
+        if (p.phase !== 'done') {
+          setProgress(p)
+          return
+        }
+        setProgress(null)
+        queryClient.invalidateQueries({ queryKey: ['backups', serverId] })
+        // The result of a scheduled backup is stored on the server.
+        queryClient.invalidateQueries({ queryKey: ['server', serverId] })
       }),
-    [serverId]
+    [serverId, queryClient]
   )
 
   const refresh = (): void => {
@@ -77,7 +89,7 @@ export function ServerBackups({ server }: Props) {
     onSettled: refresh
   })
 
-  const working = create.isPending || restore.isPending
+  const working = create.isPending || restore.isPending || progress !== null
   const stopped = server.status === 'stopped' || server.status === 'crashed'
   const canBackUp = server.status === 'running' || server.status === 'stopped' || server.status === 'crashed'
 
@@ -175,6 +187,13 @@ export function ServerBackups({ server }: Props) {
                   <Table.Td>
                     <Group gap="xs">
                       <Text size="sm">{new Date(backup.createdAt).toLocaleString()}</Text>
+                      {backup.kind === 'scheduled' && (
+                        <Tooltip label="Made by the daily schedule; old ones are deleted automatically">
+                          <Badge size="xs" variant="light" color="blue">
+                            scheduled
+                          </Badge>
+                        </Tooltip>
+                      )}
                       {backup.kind === 'pre-restore' && (
                         <Tooltip label="Made automatically right before a restore">
                           <Badge size="xs" variant="light" color="orange">

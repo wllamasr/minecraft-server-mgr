@@ -13,14 +13,17 @@ import {
   extractArchive,
   planBackup,
   readArchiveComment,
+  planChangedSince,
   restorableManifest,
   RestoreLeftoverError,
+  type BackupPlan,
   swapIntoServerDir,
   writeArchive,
   type ArchiveProgress
 } from '../utils/backup-archive'
 import { isSaveFinishedLine, saveOffAnswer } from '../../shared/utils/save-lines'
 import { formatBytes } from '../../shared/utils/format'
+import { scheduledBackupsToPrune } from '../../shared/utils/backup-schedule'
 import { IPC_EVENTS, isPluginPlatform } from '../../shared/constants'
 import type { BackupInfo, BackupKind, BackupProgress, RestoreBackupOptions } from '../../shared/types'
 import log from '../utils/logger'
@@ -39,7 +42,7 @@ const SAVE_ALL_TIMEOUT_MS = 180_000
 /** Room that must be left on the backup volume beyond the size of the backup. */
 const FREE_SPACE_MARGIN = 64 * 1024 * 1024
 
-const ID_PATTERN = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-(manual|pre-restore)$/
+const ID_PATTERN = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})-(manual|pre-restore|scheduled)$/
 const SERVER_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/
 
 /**
@@ -265,7 +268,59 @@ function refuseWhileGoingAway(serverId: string): void {
   if (isBeingDeleted(serverId)) throw new Error('Server is being deleted')
 }
 
-async function runBackup(serverId: string, kind: BackupKind, signal: AbortSignal): Promise<BackupInfo> {
+interface ScheduledOptions {
+  /** Keep this many scheduled backups; older ones go once the new one is made. */
+  keep: number
+}
+
+/** When the newest scheduled backup was made, and how many files it holds. */
+async function newestScheduled(serverId: string): Promise<{ at: Date | null; fileCount: number | undefined }> {
+  const dir = backupDir(serverId)
+  const ids = existsSync(dir)
+    ? (await readdir(dir))
+        .filter((name) => name.endsWith('.zip'))
+        .map((name) => name.slice(0, -4))
+        .filter((id) => ID_PATTERN.exec(id)?.[7] === 'scheduled')
+        .sort((a, b) => b.localeCompare(a))
+    : []
+  if (ids.length === 0) return { at: null, fileCount: undefined }
+  let fileCount: number | undefined
+  try {
+    const manifest = await readManifest(backupPath(serverId, ids[0]))
+    if (typeof manifest.fileCount === 'number') fileCount = manifest.fileCount
+  } catch {
+    // Unreadable: nothing to compare with, so a new backup is made.
+  }
+  return { at: idToDate(ids[0]), fileCount }
+}
+
+/** Delete the scheduled backups beyond the number to keep. Never fails the backup. */
+async function pruneScheduled(serverId: string, keep: number, justCreated: string): Promise<void> {
+  try {
+    const dir = backupDir(serverId)
+    const ids = (await readdir(dir)).filter((name) => name.endsWith('.zip')).map((name) => name.slice(0, -4))
+    const doomed = scheduledBackupsToPrune(ids, keep, justCreated)
+    for (const id of doomed) await rm(backupPath(serverId, id), { force: true })
+    if (doomed.length) {
+      pushLog(serverId, `Deleted ${doomed.length} old scheduled backup${doomed.length === 1 ? '' : 's'} (keeping the last ${keep}).`, 'INFO')
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    log.warn(`[Backup] Could not delete old scheduled backups of ${serverId}: ${message}`)
+    pushLog(serverId, `Old scheduled backups could not be deleted: ${message}`, 'WARN')
+  }
+}
+
+/**
+ * Make a backup. Resolves to null only for a scheduled backup of a stopped
+ * server whose files have not changed since its last scheduled backup.
+ */
+async function runBackup(
+  serverId: string,
+  kind: BackupKind,
+  signal: AbortSignal,
+  scheduled?: ScheduledOptions
+): Promise<BackupInfo | null> {
   refuseWhileGoingAway(serverId)
   const server = getServer(serverId)
   if (!server) throw new Error('Server not found')
@@ -277,6 +332,18 @@ async function runBackup(serverId: string, kind: BackupKind, signal: AbortSignal
   await mkdir(dir, { recursive: true })
   await sweepPartials(dir)
 
+  // A stopped server that nothing touched would get the same backup every
+  // day, and those copies would push the useful ones out of what is kept.
+  let plan: BackupPlan | undefined
+  if (scheduled && !whileRunning) {
+    plan = await planBackup(server.absolutePath, signal)
+    const last = await newestScheduled(serverId)
+    if (!planChangedSince(plan, last.at, last.fileCount)) {
+      pushLog(serverId, 'Scheduled backup skipped: nothing has changed since the last one.', 'INFO')
+      return null
+    }
+  }
+
   const started = Date.now()
   pushLog(serverId, whileRunning ? 'Backup started — pausing world saving for a consistent copy...' : 'Backup started...', 'INFO')
 
@@ -287,7 +354,7 @@ async function runBackup(serverId: string, kind: BackupKind, signal: AbortSignal
       resumeSaving = await pauseSaving(serverId, signal)
     }
 
-    const plan = await planBackup(server.absolutePath, signal)
+    plan ??= await planBackup(server.absolutePath, signal)
     await ensureFreeSpace(dir, plan.totalBytes)
 
     let id = newBackupId(new Date(), kind)
@@ -324,6 +391,8 @@ async function runBackup(serverId: string, kind: BackupKind, signal: AbortSignal
       plan.skipped.length ? 'WARN' : 'INFO'
     )
     if (plan.skipped.length) log.warn(`[Backup] Skipped in ${serverId}: ${plan.skipped.slice(0, 20).join(', ')}`)
+    // Only now that the new backup is whole do old ones go.
+    if (scheduled) await pruneScheduled(serverId, scheduled.keep, id)
     return info
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -338,7 +407,20 @@ async function runBackup(serverId: string, kind: BackupKind, signal: AbortSignal
  * Back a server up. Works on a stopped server and on a running one (saving is
  * paused for the duration). One backup or restore per server at a time.
  */
-export async function createBackup(serverId: string, kind: BackupKind = 'manual'): Promise<BackupInfo> {
+export async function createBackup(serverId: string): Promise<BackupInfo> {
+  return (await startBackup(serverId, 'manual')) as BackupInfo
+}
+
+/**
+ * The backup of the daily schedule. Old scheduled backups beyond `keep` are
+ * deleted once the new one is complete. Resolves to null when a stopped
+ * server has not changed since its last scheduled backup (nothing is made).
+ */
+export function createScheduledBackup(serverId: string, keep: number): Promise<BackupInfo | null> {
+  return startBackup(serverId, 'scheduled', { keep })
+}
+
+async function startBackup(serverId: string, kind: BackupKind, scheduled?: ScheduledOptions): Promise<BackupInfo | null> {
   const controller = new AbortController()
   let done: Promise<unknown> = Promise.resolve()
   const end = beginBusy(serverId, {
@@ -348,7 +430,11 @@ export async function createBackup(serverId: string, kind: BackupKind = 'manual'
       await done.catch(() => undefined)
     }
   })
-  const run = runBackup(serverId, kind, controller.signal).finally(end)
+  const run = runBackup(serverId, kind, controller.signal, scheduled).finally(() => {
+    end()
+    // Tells every window the operation is over, whoever started it.
+    sendProgress({ serverId, operation: 'backup', phase: 'done', doneBytes: 0, totalBytes: 0 })
+  })
   done = run
   return run
 }
@@ -494,7 +580,10 @@ export async function restoreBackup(serverId: string, backupId: string, options:
       await done.catch(() => undefined)
     }
   })
-  const run = runRestore(serverId, backupId, options ?? {}, controller.signal, () => (committed = true)).finally(end)
+  const run = runRestore(serverId, backupId, options ?? {}, controller.signal, () => (committed = true)).finally(() => {
+    end()
+    sendProgress({ serverId, operation: 'restore', phase: 'done', doneBytes: 0, totalBytes: 0 })
+  })
   done = run
   return run
 }
