@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS, IPC_EVENTS } from '../shared/constants'
 import type {
   CreateServerInput,
+  UpdateServerSettingsInput,
   ServerWithStatus,
   JavaInstallation,
   ServerLogEntry,
@@ -25,6 +26,11 @@ const api = {
   startServer: (serverId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.SERVER_START, serverId),
 
   stopServer: (serverId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.SERVER_STOP, serverId),
+
+  restartServer: (serverId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.SERVER_RESTART, serverId),
+
+  updateServerSettings: (serverId: string, settings: UpdateServerSettingsInput): Promise<ServerWithStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SERVER_UPDATE_SETTINGS, { serverId, settings }),
 
   deleteServer: (serverId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.SERVER_DELETE, serverId),
 
@@ -99,6 +105,13 @@ const api = {
     ipcRenderer.invoke('hosts:start', { hostId, serverId }),
   stopRemoteServer: (hostId: string, serverId: string): Promise<void> =>
     ipcRenderer.invoke('hosts:stop', { hostId, serverId }),
+  restartRemoteServer: (hostId: string, serverId: string): Promise<void> =>
+    ipcRenderer.invoke('hosts:restart', { hostId, serverId }),
+  updateRemoteServer: (
+    hostId: string,
+    serverId: string,
+    settings: UpdateServerSettingsInput
+  ): Promise<RemoteServer> => ipcRenderer.invoke('hosts:update-server', { hostId, serverId, settings }),
   deleteRemoteServer: (hostId: string, serverId: string): Promise<void> =>
     ipcRenderer.invoke('hosts:delete-server', { hostId, serverId }),
   sendRemoteCommand: (hostId: string, serverId: string, command: string): Promise<void> =>

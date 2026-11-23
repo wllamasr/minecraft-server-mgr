@@ -21,7 +21,9 @@ export const servers = sqliteTable('servers', {
   modpackVersionId: text('modpack_version_id'),
   modpackName: text('modpack_name'),
   // JVM argument profile: 'default' (heap only) or 'aikar' (tuned G1GC flags)
-  jvmProfile: text('jvm_profile').notNull().default('default')
+  jvmProfile: text('jvm_profile').notNull().default('default'),
+  // Daily scheduled restart, local wall-clock time "HH:MM"; null = none
+  restartSchedule: text('restart_schedule')
 })
 
 // ─── Installed Mods ─────────────────────────────────────────

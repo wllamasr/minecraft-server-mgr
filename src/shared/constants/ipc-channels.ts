@@ -7,6 +7,8 @@ export const IPC_CHANNELS = {
   SERVER_STOP: 'server:stop',
   SERVER_DELETE: 'server:delete',
   SERVER_GET: 'server:get',
+  SERVER_RESTART: 'server:restart',
+  SERVER_UPDATE_SETTINGS: 'server:update-settings',
 
   // Console
   CONSOLE_SEND_COMMAND: 'console:send-command',

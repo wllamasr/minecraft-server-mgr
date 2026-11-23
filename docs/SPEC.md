@@ -90,6 +90,18 @@ control.
   (a crash, not an intentional stop) is restarted after a short delay, up to 3 times per
   minute before giving up, with each attempt logged to the console. Stopping, starting or
   deleting the server cancels a restart that is still pending.
+- **FR-12c** The user can **restart** a running server: it is stopped (FR-12) and started again
+  once its process has exited. Concurrent restart requests for one server are one restart.
+  Restarting a stopped server starts it.
+- **FR-12d** A server can have a **scheduled restart**: a daily wall-clock time `HH:MM`
+  (24-hour, local time zone; `servers.restart_schedule`, null when off). A scheduler in the main
+  process checks every 15 seconds. It warns players (`say`) 5 minutes and 1 minute before and
+  restarts the server (FR-12c) at the scheduled time. It only acts on a server that is running at
+  that moment; an occurrence noticed more than 60 seconds late is skipped; each occurrence is
+  handled at most once; a warning whose lead time had already passed by more than 30 seconds when the
+  schedule was set is skipped. The schedule keeps its wall-clock time across daylight-saving changes (a time
+  that does not exist that day fires once, an hour later). Schedules only run while the app is
+  running. The `msmd` daemon applies the same rules on the host's clock.
 - **FR-13** Delete stops the server if running, removes its DB row, and deletes its
   directory. Failure to delete files is logged but does not abort the row removal.
 

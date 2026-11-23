@@ -129,6 +129,9 @@ func runServe(args []string) {
 	mgr := server.NewManager(cfg, st, hub)
 	apiServer := api.New(cfg, mgr, token, fingerprint)
 
+	schedulerStop := make(chan struct{})
+	go mgr.RunScheduler(schedulerStop)
+
 	httpServer := &http.Server{
 		Addr:      cfg.Addr,
 		Handler:   apiServer.Handler(),
@@ -173,6 +176,7 @@ func runServe(args []string) {
 		} else {
 			log.Printf("shutting down...")
 		}
+		close(schedulerStop)
 		mgr.StopAll()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

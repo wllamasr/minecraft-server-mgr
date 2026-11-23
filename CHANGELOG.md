@@ -52,6 +52,18 @@ All notable changes to this project are documented here. The format follows
 - Community files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull request templates,
   `CODEOWNERS`, and Dependabot configuration.
 - User guide (`docs/USER_GUIDE.md`).
+- **Restart** button for running servers, local and remote: the server is stopped cleanly and
+  started again once its process is gone.
+- **Scheduled restart**: a server can restart every day at a fixed time (`HH:MM`, 24-hour).
+  Players are warned in chat 5 minutes and 1 minute before; a stopped server is left stopped,
+  and a restart that was missed (computer asleep, app closed) is skipped, not caught up. Set it
+  in the server's **Settings** tab for local servers (this computer's time; only runs while the
+  app is open) or with the clock button on a remote host's server (the host's time; runs in
+  `msmd`, also while the app is closed).
+- IPC channels `server:restart`, `server:update-settings`, `hosts:restart` and
+  `hosts:update-server`; column `servers.restart_schedule`. See [docs/IPC.md](docs/IPC.md).
+- `msmd`: `POST /v1/servers/{id}/restart`, `PATCH /v1/servers/{id}` (`restartSchedule`), and
+  `time` / `timeZone` in `GET /v1/info`.
 - Quitting the app with servers running now stops them first: each server gets the `stop`
   command and time to save, and the app exits once they are down. The same happens in `msmd` on
   `SIGTERM`/`SIGINT` (for example `systemctl stop msmd`); the API keeps answering while the

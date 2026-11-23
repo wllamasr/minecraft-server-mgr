@@ -16,7 +16,11 @@ on the host:
   installs an Eclipse Temurin JDK (8/17/21/25) into its data dir. No manual setup.
 - **Servers.** Create (async provisioning), start, stop, delete, list, get, with
   a live console (history + SSE) and command input. Crash **auto-restart**
-  (capped 3/min) when `autoStart` is set.
+  (capped 3/min) when `autoStart` is set. **Restart** on request, and a daily
+  **scheduled restart** per server (`restartSchedule`, `HH:MM` on the host's
+  clock) with chat warnings 5 minutes and 1 minute before; only running
+  servers are restarted, and a restart missed while the host was down or
+  suspended is skipped.
 - **Mod loaders.** Fabric, Quilt, Forge, NeoForge — installed with each
   project's official installer; the right launch command is used per loader.
 - **Plugin platforms.** Paper, Purpur and Folia: pass `modLoader` (`paper`, `purpur`, `folia`),

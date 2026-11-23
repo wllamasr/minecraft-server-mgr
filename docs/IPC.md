@@ -22,7 +22,13 @@ newer channels are still raw strings (noted below) and are good first cleanup ca
 | `createServer(input)`          | `server:create`   | `CreateServerInput`   | `ServerInstance`             |
 | `startServer(id)`              | `server:start`    | `string`              | `void`                       |
 | `stopServer(id)`               | `server:stop`     | `string`              | `void` (graceful; kill after 2 min; resolves once exited) |
+| `restartServer(id)`            | `server:restart`  | `string`              | `void` (stop, wait for exit, start; starts a stopped server) |
+| `updateServerSettings(id, settings)` | `server:update-settings` | `{ serverId, settings: UpdateServerSettingsInput }` | `ServerWithStatus` |
 | `deleteServer(id)`             | `server:delete`   | `string`              | `void`                       |
+
+`UpdateServerSettingsInput` is `{ restartSchedule?: string \| null }`: `"HH:MM"` (24-hour, local
+time) schedules a daily restart, `null` turns it off, and an omitted field is left unchanged.
+Any other value for it is rejected; other keys are ignored. `ServerInstance.restartSchedule` holds the stored value.
 
 `createServer` downloads the server jar (vanilla from Mojang, or the complete Paper/Purpur/Folia
 build), verifies its checksum, writes `server.properties` + `eula.txt`, and installs the mod
@@ -95,6 +101,8 @@ calls use the server's `plugins/` folder, and only `modrinth` is accepted.
 | `createRemoteServer(hostId, input)`                  | `hosts:create-server`      | `{ hostId, input }`              | `RemoteServer`           |
 | `startRemoteServer(hostId, serverId)`                | `hosts:start`              | `{ hostId, serverId }`           | `void`                   |
 | `stopRemoteServer(hostId, serverId)`                 | `hosts:stop`               | `{ hostId, serverId }`           | `void`                   |
+| `restartRemoteServer(hostId, serverId)`              | `hosts:restart`            | `{ hostId, serverId }`           | `void` (returns once msmd accepted it) |
+| `updateRemoteServer(hostId, serverId, settings)`     | `hosts:update-server`      | `{ hostId, serverId, settings }` | `RemoteServer`           |
 | `deleteRemoteServer(hostId, serverId)`               | `hosts:delete-server`      | `{ hostId, serverId }`           | `void`                   |
 | `sendRemoteCommand(hostId, serverId, command)`       | `hosts:command`            | `{ hostId, serverId, command }`  | `void`                   |
 | `remoteServerLogs(hostId, serverId)`                 | `hosts:logs`               | `{ hostId, serverId }`           | `ServerLogEntry[]`       |

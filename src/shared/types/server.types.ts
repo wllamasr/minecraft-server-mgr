@@ -42,6 +42,14 @@ export interface ServerInstance {
   modpackName: string | null
   /** JVM argument profile used to launch the server. */
   jvmProfile: JvmProfile
+  /** Daily scheduled restart as local wall-clock time "HH:MM", or null for none. */
+  restartSchedule: string | null
+}
+
+/** Settings of an existing server that can be changed after creation. */
+export interface UpdateServerSettingsInput {
+  /** "HH:MM" (24 h) to restart the server every day at that time; null to turn it off. */
+  restartSchedule?: string | null
 }
 
 export interface CreateServerInput {

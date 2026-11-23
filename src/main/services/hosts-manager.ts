@@ -1,4 +1,5 @@
 import { isPluginPlatform } from '../../shared/constants'
+import { isValidRestartSchedule } from '../../shared/utils/restart-schedule'
 import { safeStorage } from 'electron'
 import { v4 as uuid } from 'uuid'
 import { eq } from 'drizzle-orm'
@@ -116,6 +117,43 @@ export function startRemoteServer(hostId: string, serverId: string): Promise<voi
 
 export function stopRemoteServer(hostId: string, serverId: string): Promise<void> {
   return remoteRequest(connFor(hostId), 'POST', `/v1/servers/${serverId}/stop`).then(() => undefined)
+}
+
+/**
+ * Routes added after a host's msmd was installed answer 404 or 405 there. Say
+ * what to do about it instead of passing the bare HTTP error on.
+ */
+function explainOlderDaemon(err: unknown): never {
+  const message = err instanceof Error ? err.message : String(err)
+  const unknownRoute = /^Daemon HTTP 405\b/.test(message) || (/^Daemon HTTP 404\b/.test(message) && !/server not found/.test(message))
+  if (unknownRoute) {
+    throw new Error('This host runs an older msmd that does not support this. Update msmd on the host and try again.')
+  }
+  throw err
+}
+
+export function restartRemoteServer(hostId: string, serverId: string): Promise<void> {
+  return remoteRequest(connFor(hostId), 'POST', `/v1/servers/${serverId}/restart`).then(
+    () => undefined,
+    explainOlderDaemon
+  )
+}
+
+/** Set (HH:MM, host time) or clear (null) a remote server's daily restart. */
+export function updateRemoteServer(
+  hostId: string,
+  serverId: string,
+  settings: { restartSchedule?: string | null }
+): Promise<RemoteServer> {
+  if (!settings || typeof settings !== 'object') return Promise.reject(new Error('Invalid settings'))
+  const body: { restartSchedule?: string | null } = {}
+  if (settings.restartSchedule !== undefined) {
+    if (settings.restartSchedule !== null && !isValidRestartSchedule(settings.restartSchedule)) {
+      return Promise.reject(new Error('Restart time must be HH:MM in 24-hour format, for example 04:30'))
+    }
+    body.restartSchedule = settings.restartSchedule
+  }
+  return remoteRequest<RemoteServer>(connFor(hostId), 'PATCH', `/v1/servers/${serverId}`, body).catch(explainOlderDaemon)
 }
 
 export function deleteRemoteServer(hostId: string, serverId: string): Promise<void> {

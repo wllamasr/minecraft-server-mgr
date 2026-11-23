@@ -254,6 +254,41 @@ test('deploys a Paper server to a remote host', async () => {
 
     await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.startRemoteServer(hostId, serverId), created)
     await expect.poll(async () => (await remote()).log, { timeout: 6 * 60_000, intervals: [2000] }).toMatch(/Done \(\d/)
+
+    // Scheduled restart setting, and the host clock it refers to.
+    const settings = await page.evaluate(async ({ hostId, serverId }) => {
+      const api = (window as unknown as ApiWindow).api
+      const rejected = await api.updateRemoteServer(hostId, serverId, { restartSchedule: '4:30' }).then(() => '', (e: Error) => e.message)
+      const saved = await api.updateRemoteServer(hostId, serverId, { restartSchedule: '04:30' })
+      const listed = (await api.listRemoteServers(hostId)).find((s: { id: string }) => s.id === serverId)
+      const cleared = await api.updateRemoteServer(hostId, serverId, { restartSchedule: null })
+      const missing = await api.restartRemoteServer(hostId, 'does-not-exist').then(() => '', (e: Error) => e.message)
+      return { rejected, saved: saved.restartSchedule, listed: listed.restartSchedule, cleared: cleared.restartSchedule, missing, info: await api.hostInfo(hostId) }
+    }, created)
+    expect(settings.rejected).toMatch(/HH:MM/)
+    expect(settings.saved).toBe('04:30')
+    expect(settings.listed).toBe('04:30')
+    expect(settings.cleared).toBeUndefined()
+    // A genuine "not found" is not mistaken for an outdated daemon.
+    expect(settings.missing).toMatch(/server not found/)
+    expect(settings.info.time).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(Z|[+-]\d\d:\d\d)$/)
+    expect(settings.info.timeZone).toBeTruthy()
+
+    // Restart: the process is replaced and the server boots again.
+    const pidOf = (): Promise<number | undefined> =>
+      page.evaluate(async ({ hostId, serverId }) => {
+        const servers: { id: string; pid?: number }[] = await (window as unknown as ApiWindow).api.listRemoteServers(hostId)
+        return servers.find((s) => s.id === serverId)?.pid
+      }, created)
+    const firstPid = await pidOf()
+    expect(firstPid).toBeTruthy()
+    await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.restartRemoteServer(hostId, serverId), created)
+    await expect.poll(pidOf, { timeout: 2 * 60_000, intervals: [1000] }).not.toBe(firstPid)
+    await expect.poll(async () => (await remote()).status, { timeout: 60_000, intervals: [1000] }).toBe('running')
+    await expect
+      .poll(async () => ((await remote()).log.match(/Done \(\d/g) ?? []).length, { timeout: 6 * 60_000, intervals: [2000] })
+      .toBe(2)
+
     await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.stopRemoteServer(hostId, serverId), created)
     await expect.poll(async () => (await remote()).status, { timeout: 90_000, intervals: [1000] }).toBe('stopped')
   } finally {

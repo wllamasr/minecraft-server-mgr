@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/server"
@@ -44,7 +45,11 @@ func (s *Server) handleInfo(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) info() map[string]any {
 	host, _ := os.Hostname()
+	now := time.Now()
 	return map[string]any{
+		// Scheduled restarts use the host's clock: let clients show which one.
+		"time":         now.Format(time.RFC3339),
+		"timeZone":     now.Format("MST"),
 		"agentVersion": AgentVersion,
 		"apiVersions":  []string{"v1"},
 		"os":           runtime.GOOS,
@@ -156,6 +161,49 @@ func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if err := s.mgr.RequestRestart(r.PathValue("id")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+}
+
+// handleUpdate changes settings of an existing server. Only the fields present
+// in the body change; unknown fields are rejected rather than silently dropped.
+func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	var body map[string]json.RawMessage
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	var in server.UpdateInput
+	for field, raw := range body {
+		switch field {
+		case "restartSchedule":
+			// null clears the schedule, like an empty string.
+			var v *string
+			if err := json.Unmarshal(raw, &v); err != nil {
+				writeError(w, http.StatusBadRequest, "restartSchedule must be a string or null")
+				return
+			}
+			if v == nil {
+				v = new(string)
+			}
+			in.RestartSchedule = v
+		default:
+			writeError(w, http.StatusBadRequest, "unknown or read-only field: "+field)
+			return
+		}
+	}
+	view, err := s.mgr.Update(r.PathValue("id"), in)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
 }
 
 func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {

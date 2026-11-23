@@ -37,6 +37,9 @@ paths:
   /v1/info:
     get:
       summary: Host info (os, arch, detected Java installations, agent version)
+      description: >-
+        Also reports the host's clock as "time" (RFC 3339) and "timeZone" (abbreviation):
+        scheduled restarts use that clock.
       responses: { "200": { description: OK } }
   /v1/loaders/{loader}/versions:
     get:
@@ -111,6 +114,30 @@ paths:
     get:
       summary: Get a server
       responses: { "200": { description: OK }, "404": { description: Not found } }
+    patch:
+      summary: Change settings of a server
+      description: >-
+        Only the fields present in the body change. Unknown or read-only fields are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                restartSchedule:
+                  type: string
+                  nullable: true
+                  description: >-
+                    Daily restart time "HH:MM" (24-hour) on the host's clock. null or "" turns
+                    it off. Players are warned 5 minutes and 1 minute before; only a running
+                    server is restarted.
+                  example: "04:30"
+      responses:
+        "200": { description: The updated server }
+        "400": { description: Malformed schedule, or an unknown or read-only field }
+        "404": { description: Unknown server }
     delete:
       summary: Delete a server
       responses: { "204": { description: Deleted } }
@@ -125,6 +152,17 @@ paths:
         is killed after that. Watch the status until it is "stopped". (Older daemons answered
         only once the server had stopped.)
       responses: { "202": { description: Accepted } }
+  /v1/servers/{id}/restart:
+    post:
+      summary: Restart a server
+      description: >-
+        Stops the server (as /stop does), waits until its process is gone and starts it again.
+        Returns at once; watch the status. A server that is not running is started. A second
+        request while a restart is in progress is accepted and changes nothing.
+      responses:
+        "202": { description: Accepted }
+        "400": { description: The server is still being provisioned, or the daemon is shutting down }
+        "404": { description: Unknown server }
   /v1/servers/{id}/command:
     post:
       summary: Send a console command

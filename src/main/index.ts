@@ -5,6 +5,7 @@ import { registerIpcHandlers } from './ipc'
 import { runMigrations } from './database/migrate'
 import { initializeAutoUpdater } from './services/auto-updater'
 import { hasRunningServers, stopAllServers } from './services/server-manager'
+import { startRestartScheduler } from './services/restart-scheduler'
 import { isSafeExternalUrl } from '../shared/utils/url'
 import log from './utils/logger'
 
@@ -85,6 +86,9 @@ app.whenReady().then(() => {
 
   // Register IPC handlers
   registerIpcHandlers()
+
+  // Daily scheduled restarts of local servers
+  startRestartScheduler()
 
   // Start auto-updater
   // We disable it in dev mode to prevent errors and just let it run in production

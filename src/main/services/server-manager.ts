@@ -23,7 +23,15 @@ import { buildJvmArgs, isJvmProfile, isValidRam, ramToMb } from '../../shared/ut
 import { isReleaseVersion } from '../../shared/utils/minecraft-version'
 import { isValidBuildId } from '../../shared/utils/server-software'
 import { formatProgress } from '../../shared/utils/format'
-import type { ServerInstance, ServerWithStatus, ServerStatus, CreateServerInput, ModSource } from '../../shared/types'
+import { isValidRestartSchedule } from '../../shared/utils/restart-schedule'
+import type {
+  ServerInstance,
+  ServerWithStatus,
+  ServerStatus,
+  CreateServerInput,
+  ModSource,
+  UpdateServerSettingsInput
+} from '../../shared/types'
 
 // ─── In-memory process tracking ────────────────────────────
 interface RunningServer {
@@ -146,7 +154,8 @@ export function createServer(input: CreateServerInput): ServerInstance {
     modpackProjectId: input.modpack?.projectId ?? null,
     modpackVersionId: input.modpack?.versionId ?? null,
     modpackName: input.modpack?.name ?? null,
-    jvmProfile: input.jvmProfile ?? 'default'
+    jvmProfile: input.jvmProfile ?? 'default',
+    restartSchedule: null
   }
 
   db.insert(schema.servers).values(server).run()
@@ -247,6 +256,7 @@ async function provisionServer(
 
 export function startServer(serverId: string): void {
   if (shuttingDown) throw new Error('The app is shutting down')
+  if (deleting.has(serverId)) throw new Error('Server is being deleted')
   cancelAutoRestart(serverId)
   if (runningServers.has(serverId)) {
     throw new Error('Server is already running')
@@ -420,6 +430,60 @@ export function stopServer(serverId: string): Promise<void> {
   return running.stopping
 }
 
+// Servers that are being deleted: they must not be started again by a restart
+// that was already in flight.
+const deleting = new Set<string>()
+
+// Restarts in flight, so a second request for the same server joins the first.
+const restarting = new Map<string, Promise<void>>()
+
+/**
+ * Restart a server: stop it, wait until its process is gone, start it again.
+ * A server that is not running is simply started.
+ */
+export function restartServer(serverId: string): Promise<void> {
+  const inFlight = restarting.get(serverId)
+  if (inFlight) return inFlight
+
+  const run = (async (): Promise<void> => {
+    if (runningServers.has(serverId)) {
+      pushLog(serverId, 'Restarting server...', 'INFO')
+      await stopServer(serverId)
+    }
+    // The server may have been deleted, or the app may be quitting, meanwhile:
+    // startServer then throws and the caller reports it.
+    startServer(serverId)
+  })().finally(() => {
+    restarting.delete(serverId)
+  })
+
+  restarting.set(serverId, run)
+  return run
+}
+
+/** Change the settings of an existing server. Only the given fields change. */
+export function updateServerSettings(serverId: string, input: UpdateServerSettingsInput): ServerWithStatus {
+  if (!input || typeof input !== 'object') throw new Error('Invalid settings')
+
+  const changes: { restartSchedule?: string | null; updatedAt: string } = { updatedAt: new Date().toISOString() }
+  if (input.restartSchedule !== undefined) {
+    if (input.restartSchedule !== null && !isValidRestartSchedule(input.restartSchedule)) {
+      throw new Error('Restart time must be HH:MM in 24-hour format, for example 04:30')
+    }
+    changes.restartSchedule = input.restartSchedule
+  }
+
+  const db = getDatabase()
+  const result = db.update(schema.servers).set(changes).where(eq(schema.servers.id, serverId)).run()
+  if (result.changes === 0) throw new Error(`Server not found: ${serverId}`)
+  return getServer(serverId) as ServerWithStatus
+}
+
+/** True once the app has begun quitting. */
+export function isShuttingDown(): boolean {
+  return shuttingDown
+}
+
 /** True while at least one server process is alive. */
 export function hasRunningServers(): boolean {
   return runningServers.size > 0
@@ -440,6 +504,15 @@ export async function stopAllServers(): Promise<void> {
 }
 
 export async function deleteServer(serverId: string): Promise<void> {
+  deleting.add(serverId)
+  try {
+    await removeServer(serverId)
+  } finally {
+    deleting.delete(serverId)
+  }
+}
+
+async function removeServer(serverId: string): Promise<void> {
   cancelAutoRestart(serverId)
   restartHistory.delete(serverId)
 

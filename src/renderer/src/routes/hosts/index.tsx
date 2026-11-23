@@ -5,13 +5,14 @@ import {
 } from '@mantine/core'
 import {
   IconServer, IconPlus, IconTrash, IconPlayerPlay, IconPlayerStop,
-  IconTerminal2, IconRefresh, IconPlugConnected, IconDownload
+  IconTerminal2, IconRefresh, IconPlugConnected, IconDownload, IconClock
 } from '@tabler/icons-react'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
-import type { RemoteHost, RemoteServer } from '@shared/types'
+import type { RemoteHost, RemoteServer, HostInfo } from '@shared/types'
+import { isValidRestartSchedule } from '@shared/utils/restart-schedule'
 import { engineLabel, isPluginPlatform } from '@shared/constants'
 
 export const Route = createFileRoute('/hosts/')({
@@ -183,6 +184,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
   const queryClient = useQueryClient()
   const [deployOpen, deployHandlers] = useDisclosure(false)
   const [consoleServer, setConsoleServer] = useState<RemoteServer | null>(null)
+  const [scheduleServer, setScheduleServer] = useState<RemoteServer | null>(null)
 
   const { data: info } = useQuery({
     queryKey: ['host-info', host.id],
@@ -251,6 +253,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
                 <Text fw={800} truncate>{s.name}</Text>
                 <Text size="xs" c="dark.2">
                   {engineLabel(s.modLoader)} · MC {s.minecraftVersion} · Port {s.port} · {s.maxRam}
+                  {s.restartSchedule ? ` · restarts daily at ${s.restartSchedule}` : ''}
                 </Text>
               </Box>
               <Badge size="sm" variant="light" color={statusColor(s.status).split('.')[0]}>{s.status}</Badge>
@@ -271,6 +274,20 @@ function HostDetail({ host }: { host: RemoteHost }) {
                   <IconPlayerPlay size={16} />
                 </ActionIcon>
               )}
+              {s.status === 'running' && (
+                <Tooltip label="Restart">
+                  <ActionIcon variant="light" aria-label="Restart"
+                    onClick={() => action(window.api.restartRemoteServer(host.id, s.id), 'Restarting…')}>
+                    <IconRefresh size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+              <Tooltip label="Scheduled restart">
+                <ActionIcon variant="light" aria-label="Scheduled restart" color={s.restartSchedule ? 'blue' : 'gray'}
+                  onClick={() => setScheduleServer(s)}>
+                  <IconClock size={16} />
+                </ActionIcon>
+              </Tooltip>
               <ActionIcon variant="light" color="red"
                 onClick={() => action(window.api.deleteRemoteServer(host.id, s.id), 'Deleted')}>
                 <IconTrash size={16} />
@@ -288,7 +305,74 @@ function HostDetail({ host }: { host: RemoteHost }) {
       {consoleServer && (
         <RemoteConsoleModal host={host} server={consoleServer} onClose={() => setConsoleServer(null)} />
       )}
+      {scheduleServer && (
+        <RemoteScheduleModal
+          host={host} info={info} server={scheduleServer}
+          onClose={() => setScheduleServer(null)} onDone={invalidate}
+        />
+      )}
     </Stack>
+  )
+}
+
+/** The host's zone as "UTC+02:00 (CEST)", from the clock it reported. */
+function hostZoneLabel(info: HostInfo | undefined): string | null {
+  const offset = info?.time ? /(Z|[+-]\d{2}:\d{2})$/.exec(info.time)?.[1] : undefined
+  if (!offset) return null
+  const utc = offset === 'Z' ? 'UTC' : `UTC${offset}`
+  return info?.timeZone && info.timeZone !== 'UTC' ? `${utc} (${info.timeZone})` : utc
+}
+
+function RemoteScheduleModal({
+  host, info, server, onClose, onDone
+}: { host: RemoteHost; info: HostInfo | undefined; server: RemoteServer; onClose: () => void; onDone: () => void }) {
+  const [enabled, setEnabled] = useState(!!server.restartSchedule)
+  const [time, setTime] = useState(server.restartSchedule ?? '04:00')
+  const wanted = enabled ? time : null
+  const valid = wanted === null || isValidRestartSchedule(wanted)
+  const zone = hostZoneLabel(info)
+
+  const save = useMutation({
+    mutationFn: () => window.api.updateRemoteServer(host.id, server.id, { restartSchedule: wanted }),
+    onSuccess: () => {
+      notifications.show({
+        color: 'green',
+        message: wanted ? `${server.name} will restart every day at ${wanted} (host time).` : 'Scheduled restart turned off.'
+      })
+      onDone()
+      onClose()
+    },
+    onError: (e: Error) => notifications.show({ color: 'red', message: e.message })
+  })
+
+  return (
+    <Modal opened onClose={onClose} title={`Scheduled restart — ${server.name}`} centered>
+      <Stack gap="md">
+        <Text size="sm" c="dark.2">
+          Restart the server every day at a fixed time. Players are warned in chat 5 minutes and 1 minute
+          before. The time is on the host&apos;s clock{zone ? `, which is ${zone}` : ''}, and the restart runs on
+          the host, so it happens even when this app is closed. A stopped server is left stopped.
+        </Text>
+        <Group align="flex-end">
+          <Switch label="Restart every day" checked={enabled} onChange={(e) => setEnabled(e.currentTarget.checked)} />
+          <TextInput
+            type="time" label="Time (host)" aria-label="Restart time" w={140}
+            value={time} onChange={(e) => setTime(e.currentTarget.value)}
+            disabled={!enabled} error={enabled && !valid ? 'Pick a time' : undefined}
+          />
+        </Group>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button
+            color="emerald.4" c="dark.9" loading={save.isPending}
+            disabled={!valid || wanted === (server.restartSchedule ?? null)}
+            onClick={() => save.mutate()}
+          >
+            Save
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   )
 }
 

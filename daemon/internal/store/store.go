@@ -28,9 +28,12 @@ type Server struct {
 	MaxRAM           string `json:"maxRam"`
 	// JVMProfile is "" / "default" (heap only) or "aikar" (tuned G1GC flags).
 	JVMProfile string `json:"jvmProfile,omitempty"`
-	AutoStart  bool   `json:"autoStart"`
-	CreatedAt  string `json:"createdAt"`
-	UpdatedAt  string `json:"updatedAt"`
+	// RestartSchedule is a daily restart time, "HH:MM" in the host's time zone;
+	// empty means no scheduled restart.
+	RestartSchedule string `json:"restartSchedule,omitempty"`
+	AutoStart       bool   `json:"autoStart"`
+	CreatedAt       string `json:"createdAt"`
+	UpdatedAt       string `json:"updatedAt"`
 	// Modpack provenance (set when the server was deployed from a modpack).
 	ModpackSource    string `json:"modpackSource,omitempty"`
 	ModpackProjectID string `json:"modpackProjectId,omitempty"`

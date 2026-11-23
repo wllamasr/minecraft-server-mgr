@@ -20,6 +20,7 @@ import (
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/java"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/jvm"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/schedule"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/software"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
 )
@@ -89,6 +90,9 @@ type Manager struct {
 	hub   *console.Hub
 	java  *java.Manager
 
+	// updateMu serializes changes to stored server records.
+	updateMu sync.Mutex
+
 	// stopGrace is how long a server gets to save and exit after "stop"
 	// before it is killed.
 	stopGrace time.Duration
@@ -98,6 +102,14 @@ type Manager struct {
 	provisioning  map[string]Status
 	restarts      map[string][]time.Time
 	restartTimers map[string]*time.Timer
+	// deleting marks servers that are being removed: they must not be started
+	// (by a restart in flight, say) or have their record written back.
+	deleting map[string]bool
+	// restarting marks servers with a restart in flight; a second request
+	// joins the first instead of stopping the server again.
+	restarting map[string]bool
+	// schedules is the scheduler's memory. Only the scheduler goroutine uses it.
+	schedules map[string]*schedule.State
 	// shuttingDown is set by StopAll: nothing is started or restarted after it.
 	shuttingDown bool
 }
@@ -117,6 +129,9 @@ func NewManager(cfg config.Config, st *store.Store, hub *console.Hub) *Manager {
 		provisioning:  map[string]Status{},
 		restarts:      map[string][]time.Time{},
 		restartTimers: map[string]*time.Timer{},
+		restarting:    map[string]bool{},
+		deleting:      map[string]bool{},
+		schedules:     map[string]*schedule.State{},
 	}
 }
 
@@ -266,6 +281,10 @@ func (m *Manager) Start(id string) error {
 		m.mu.Unlock()
 		return errors.New("the daemon is shutting down")
 	}
+	if m.deleting[id] {
+		m.mu.Unlock()
+		return errors.New("server is being deleted")
+	}
 	m.cancelRestartLocked(id)
 	if _, ok := m.running[id]; ok {
 		m.mu.Unlock()
@@ -320,14 +339,17 @@ func (m *Manager) launch(id string, s store.Server, cmd *exec.Cmd) error {
 
 	rs := &runningServer{cmd: cmd, stdin: stdin, status: StatusRunning, exited: make(chan struct{})}
 	m.mu.Lock()
-	if m.shuttingDown || m.running[id] != nil {
-		// Lost a race with a shutdown or with another start of the same server.
-		shuttingDown := m.shuttingDown
+	if m.shuttingDown || m.deleting[id] || m.running[id] != nil {
+		// Lost a race with a shutdown, a delete or another start of this server.
+		shuttingDown, deleting := m.shuttingDown, m.deleting[id]
 		m.mu.Unlock()
 		killTree(cmd)
 		_ = cmd.Wait()
-		if shuttingDown {
+		switch {
+		case shuttingDown:
 			return errors.New("the daemon is shutting down")
+		case deleting:
+			return errors.New("server is being deleted")
 		}
 		return errors.New("server is already running")
 	}
@@ -465,8 +487,14 @@ func (m *Manager) cancelRestartLocked(id string) {
 // Delete stops (if running) and removes a server and its files.
 func (m *Manager) Delete(id string) error {
 	m.mu.Lock()
+	m.deleting[id] = true
 	running := m.running[id] != nil
 	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		delete(m.deleting, id)
+		m.mu.Unlock()
+	}()
 	if running {
 		_ = m.Stop(id)
 	}
@@ -482,7 +510,10 @@ func (m *Manager) Delete(id string) error {
 	delete(m.restarts, id)
 	m.mu.Unlock()
 
-	if err := m.store.Delete(id); err != nil {
+	m.updateMu.Lock()
+	err = m.store.Delete(id)
+	m.updateMu.Unlock()
+	if err != nil {
 		return err
 	}
 	m.hub.ClearBuffer(id)
@@ -491,6 +522,165 @@ func (m *Manager) Delete(id string) error {
 		m.hub.PushLog(id, "Warning: could not remove server directory: "+err.Error(), "WARN")
 	}
 	return nil
+}
+
+// Restart stops a server, waits until its process is gone and starts it again.
+// A server that is not running is simply started. While a restart is in
+// flight, further requests for the same server return at once.
+func (m *Manager) Restart(id string) error {
+	m.mu.Lock()
+	if m.restarting[id] {
+		m.mu.Unlock()
+		return nil
+	}
+	m.restarting[id] = true
+	running := m.running[id] != nil
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		delete(m.restarting, id)
+		m.mu.Unlock()
+	}()
+
+	if running {
+		m.hub.PushLog(id, "Restarting server...", "INFO")
+		if err := m.Stop(id); err != nil {
+			// It may have exited on its own in the meantime; anything else is real.
+			m.mu.Lock()
+			still := m.running[id] != nil
+			m.mu.Unlock()
+			if still {
+				return err
+			}
+		}
+	}
+	// The server may have been deleted, or the daemon may be shutting down,
+	// meanwhile: Start then says so.
+	return m.Start(id)
+}
+
+// RequestRestart starts a restart and returns at once; progress shows in the
+// server's status and console.
+func (m *Manager) RequestRestart(id string) error {
+	if _, err := m.store.Get(id); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	down := m.shuttingDown
+	provisioning := m.provisioning[id] == StatusProvisioning
+	m.mu.Unlock()
+	if down {
+		return errors.New("the daemon is shutting down")
+	}
+	if provisioning {
+		return errors.New("server is still being provisioned")
+	}
+	go func() {
+		if err := m.Restart(id); err != nil {
+			m.hub.PushLog(id, "Restart failed: "+err.Error(), "ERROR")
+		}
+	}()
+	return nil
+}
+
+// UpdateInput changes settings of an existing server. Nil fields are left alone.
+type UpdateInput struct {
+	// RestartSchedule is "HH:MM" (host time), or "" for no scheduled restart.
+	RestartSchedule *string
+}
+
+// Update applies in to a server and returns the updated server.
+func (m *Manager) Update(id string, in UpdateInput) (View, error) {
+	// Read-modify-write under the lock, so a delete cannot slip in between
+	// and have its record written back.
+	m.updateMu.Lock()
+	defer m.updateMu.Unlock()
+	m.mu.Lock()
+	deleting := m.deleting[id]
+	m.mu.Unlock()
+	if deleting {
+		return View{}, store.ErrNotFound
+	}
+	s, err := m.store.Get(id)
+	if err != nil {
+		return View{}, err
+	}
+	if in.RestartSchedule != nil {
+		v := *in.RestartSchedule
+		if v != "" && !schedule.Valid(v) {
+			return View{}, errors.New("restartSchedule must be HH:MM in 24-hour time, for example 04:30")
+		}
+		s.RestartSchedule = v
+	}
+	s.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	if err := m.store.Put(s); err != nil {
+		return View{}, err
+	}
+	return m.view(s), nil
+}
+
+// schedulerInterval is how often scheduled restarts are checked.
+const schedulerInterval = 15 * time.Second
+
+// RunScheduler carries out scheduled restarts until stop is closed. Times are
+// in the host's time zone.
+func (m *Manager) RunScheduler(stop <-chan struct{}) {
+	ticker := time.NewTicker(schedulerInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case now := <-ticker.C:
+			m.scheduleTick(now)
+		}
+	}
+}
+
+// scheduleTick warns about and carries out the scheduled restarts due at now.
+func (m *Manager) scheduleTick(now time.Time) {
+	m.mu.Lock()
+	down := m.shuttingDown
+	m.mu.Unlock()
+	if down {
+		return
+	}
+
+	seen := map[string]bool{}
+	for _, s := range m.store.List() {
+		if s.RestartSchedule == "" {
+			continue
+		}
+		id := s.ID
+		running := m.statusOf(id) == StatusRunning
+		st, act, err := schedule.Tick(now, s.RestartSchedule, running, m.schedules[id])
+		if err != nil {
+			continue // not a schedule: stored by hand, ignore
+		}
+		seen[id] = true
+		m.schedules[id] = st
+
+		if act.Warn != 0 {
+			msg := schedule.WarningMessage(act.Warn)
+			m.hub.PushLog(id, msg+".", "INFO")
+			_ = m.SendCommand(id, "say "+msg)
+		}
+		if act.Restart {
+			m.hub.PushLog(id, fmt.Sprintf("Scheduled restart (%s) — restarting now.", s.RestartSchedule), "INFO")
+			_ = m.SendCommand(id, "say Server is restarting now")
+			go func() {
+				if err := m.Restart(id); err != nil {
+					m.hub.PushLog(id, "Scheduled restart failed: "+err.Error(), "ERROR")
+				}
+			}()
+		}
+	}
+	// Forget servers that were deleted or had their schedule removed.
+	for id := range m.schedules {
+		if !seen[id] {
+			delete(m.schedules, id)
+		}
+	}
 }
 
 // SendCommand writes a line to a running server's stdin.

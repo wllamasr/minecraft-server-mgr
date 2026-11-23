@@ -215,7 +215,8 @@ operate and debug; it is a **v2** option, not needed for the MVP.
 | `GET` | `/v1/servers` | List servers on this host. |
 | `POST` | `/v1/servers` | Create (returns immediately; provisions async). |
 | `GET` | `/v1/servers/{id}` | Get one server + status. |
-| `POST` | `/v1/servers/{id}/start` \| `/stop` | Lifecycle. |
+| `POST` | `/v1/servers/{id}/start` \| `/stop` \| `/restart` | Lifecycle. |
+| `PATCH` | `/v1/servers/{id}` | Change settings (`restartSchedule`). |
 | `DELETE` | `/v1/servers/{id}` | Delete. |
 | `GET`/`PUT` | `/v1/servers/{id}/properties` | Read/write `server.properties`. |
 | `POST` | `/v1/servers/{id}/command` | Send a console command. |

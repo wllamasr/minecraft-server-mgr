@@ -45,6 +45,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/servers/{id}", s.handleDelete)
 	mux.HandleFunc("POST /v1/servers/{id}/start", s.handleStart)
 	mux.HandleFunc("POST /v1/servers/{id}/stop", s.handleStop)
+	mux.HandleFunc("POST /v1/servers/{id}/restart", s.handleRestart)
+	mux.HandleFunc("PATCH /v1/servers/{id}", s.handleUpdate)
 	mux.HandleFunc("POST /v1/servers/{id}/command", s.handleCommand)
 	mux.HandleFunc("GET /v1/servers/{id}/logs", s.handleLogs)
 	mux.HandleFunc("GET /v1/servers/{id}/console", s.handleConsole)

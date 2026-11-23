@@ -147,11 +147,13 @@ These are hard requirements; reviewers will request changes if they are not met.
   `MSM_E2E_LIVE_PORT` (server port, default `25599`; the next three ports are used too). To also deploy a
   Paper server to a remote host, start an `msmd` and set `MSM_E2E_LIVE_MSMD_URL` (for example
   `https://127.0.0.1:18444`) and `MSM_E2E_LIVE_MSMD_TOKEN`.
-  `e2e/live/quit-stops-servers.spec.ts` runs with the same switch: it boots a Paper server, quits
-  the app, and checks that the server saved and exited.
+  `e2e/live/quit-stops-servers.spec.ts` runs with the same switch: it boots a Paper server,
+  restarts it, lets a scheduled restart fire (set a few minutes ahead, so this takes a while),
+  then quits the app and checks that the server saved and exited.
 - **Daemon end-to-end checks** live in `daemon/scripts/smoke.sh`. Every check must assert
   (exit non-zero on failure), not just print. It also asserts input validation (offline) and, on
-  Linux and macOS, that `SIGTERM` stops running servers before msmd exits (using a fake `java`).
+  Linux and macOS, restart, the settings update, and that `SIGTERM` stops running servers before msmd exits
+  (using a fake `java`).
   Set `MSMD_SMOKE_BIN` to test a binary that is already built. With
   `MSMD_SMOKE_LIVE=1` it additionally provisions, boots, stops and deletes a real Paper server with
   the `aikar` JVM profile (needs network; never runs in CI). Optional variables: `MSMD_SMOKE_MC`

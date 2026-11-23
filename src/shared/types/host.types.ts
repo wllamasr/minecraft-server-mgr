@@ -15,6 +15,9 @@ export interface HostInfo {
   hostname: string
   serversRoot: string
   java: { path: string; major: number; version: string }[]
+  /** The host's clock (RFC 3339) and zone abbreviation; absent on older daemons. */
+  time?: string
+  timeZone?: string
 }
 
 /** A server as returned by a daemon (mirrors the daemon's View). */
@@ -31,6 +34,8 @@ export interface RemoteServer {
   status: string
   pid?: number
   modpackName?: string
+  /** Daily restart time "HH:MM" in the host's time zone; absent when not scheduled. */
+  restartSchedule?: string
 }
 
 export interface AddHostInput {

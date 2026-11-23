@@ -252,6 +252,35 @@ SEED
       [ "$i" -gt 50 ] && fail "fake servers did not start"
       sleep 0.2
     done
+    # Settings and restart, while a server is up.
+    expect_status 401 "update without a token" PATCH "/v1/servers/$GOOD" -H "$JSON" -d '{"restartSchedule":"04:30"}'
+    expect_status 400 "malformed restart schedule" PATCH "/v1/servers/$GOOD" -H "$AUTH" -H "$JSON" -d '{"restartSchedule":"4:30"}'
+    expect_status 400 "update of a read-only field" PATCH "/v1/servers/$GOOD" -H "$AUTH" -H "$JSON" -d '{"dir":"/tmp"}'
+    expect_status 404 "update of an unknown server" PATCH /v1/servers/does-not-exist -H "$AUTH" -H "$JSON" -d '{}'
+    UPDATED="$(curl -sk -X PATCH -H "$AUTH" -H "$JSON" -d '{"restartSchedule":"04:30"}' "$BASE/v1/servers/$GOOD")"
+    expect_contains "the restart schedule is stored" '"restartSchedule":"04:30"' "$UPDATED"
+    UPDATED="$(curl -sk -X PATCH -H "$AUTH" -H "$JSON" -d '{"restartSchedule":null}' "$BASE/v1/servers/$GOOD")"
+    case "$UPDATED" in
+      *restartSchedule*) fail "null did not clear the restart schedule: $UPDATED" ;;
+      *'"id"'*) echo "ok   null clears the restart schedule" ;;
+      *) fail "unexpected answer to the update: $UPDATED" ;;
+    esac
+    expect_contains "info reports the host time zone" '"timeZone"' "$(curl -sk -H "$AUTH" "$BASE/v1/info")"
+
+    OLD_PID="$(cat "$WORK/good/pid")"
+    expect_status 404 "restart of an unknown server" POST /v1/servers/does-not-exist/restart -H "$AUTH"
+    expect_status 202 "restart a running server" POST "/v1/servers/$GOOD/restart" -H "$AUTH"
+    i=0
+    until [ "$(cat "$WORK/good/pid" 2>/dev/null)" != "$OLD_PID" ] && [ -s "$WORK/good/pid" ]; do
+      i=$((i + 1))
+      [ "$i" -gt 100 ] && fail "the server was not restarted"
+      sleep 0.2
+    done
+    [ -f "$WORK/good/saved" ] || fail "the restart did not stop the server cleanly first"
+    rm -f "$WORK/good/saved"
+    if kill -0 "$OLD_PID" 2>/dev/null; then fail "the old server process survived the restart"; fi
+    echo "ok   restart replaces the server process after a clean stop"
+
     GOOD_PID="$(cat "$WORK/good/pid")"
     BAD_PID="$(cat "$WORK/bad/pid")"
 

@@ -73,12 +73,29 @@ Creating a server does not start it. Start it when you are ready.
 - **Stop** asks the server to shut down cleanly, so the world is saved. The server gets up to
   2 minutes to save and exit; if it is still running after that it is killed, and the console
   shows a warning because recent changes may not have been saved.
-- **Restart** stops and starts the server again. Use it to apply configuration or mod changes.
+- **Restart** (shown while the server is running) stops the server cleanly and starts it again.
+  Use it to apply configuration or mod changes.
 - **Delete** removes the server and its folder, including the world. This cannot be undone, so
   back up first (see [Settings and data locations](#11-settings-and-data-locations)).
 
 A server has one status at a time: `stopped`, `starting`, `running`, `stopping`, or `crashed`.
 A *crashed* server exited unexpectedly; check its console for the reason.
+
+### Scheduled restart
+
+Busy servers run better when they are restarted regularly. In the server's **Settings** tab,
+turn on **Restart every day**, pick a time, and save. Every day at that time the server is
+restarted the same way the **Restart** button does it. Players get a chat message 5 minutes and
+1 minute before, and one when the restart begins.
+
+- The time is this computer's local time, in 24-hour format.
+- The restart only happens while the app is open and the computer is awake. If the time passes
+  while the app is closed or the computer sleeps, that day's restart is skipped.
+- Only a running server is restarted. A stopped server stays stopped.
+- If you set a time that is clearly less than 5 minutes away, the 5-minute warning is skipped
+  rather than sent late.
+- On the one day a year when the clocks skip the scheduled time, the restart happens an hour
+  later.
 
 **Quitting the app stops your servers.** Local servers run as part of the app, so when you quit
 while servers are running, the app stops each of them the same way **Stop** does and closes once
@@ -127,6 +144,12 @@ host, the newest stable build is preselected, and the **Optimized JVM flags** sw
 default. The host must run an up-to-date `msmd`: with an older one the app shows an error when it
 loads the engine's version list. Installing plugins through the app works for local servers only;
 remote hosts have no mod or plugin browser.
+
+Each server on a remote host has a **Restart** button while it runs and a clock button for its
+**scheduled restart**. A remote schedule works like a local one, with two differences: the time
+is on the host's clock (the dialog shows the host's time zone, which on a VPS is often UTC), and
+the restart is carried out by `msmd` on the host, so it happens even when this app is closed. A
+host with an older `msmd` answers that it needs an update.
 
 ### Running a large server
 

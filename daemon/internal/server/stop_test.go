@@ -294,3 +294,237 @@ func TestStopAllCancelsAPendingAutoRestart(t *testing.T) {
 		t.Errorf("%d auto-restart(s) still pending after StopAll", n)
 	}
 }
+
+// realServer registers a server that the manager can start for real: the test
+// binary stands in for java (see TestMain), so Start, Stop and Restart run
+// their actual code paths.
+func realServer(t *testing.T, m *Manager, id, schedule string) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), id)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "server.jar"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := m.store.Put(store.Server{
+		ID: id, Name: id, Dir: dir, MinecraftVersion: "1.21.4",
+		MinRAM: "1G", MaxRAM: "1G", RestartSchedule: schedule,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// selfPath is the test binary as an absolute path: servers start in their own
+// directory, where a relative path would not resolve.
+func selfPath(t *testing.T) string {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return exe
+}
+
+func newRealManager(t *testing.T) *Manager {
+	t.Helper()
+	t.Setenv(fakeServerEnv, "obey")
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "servers.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewManager(config.Config{ServersRoot: dir, JavaPath: selfPath(t), StopGrace: 10 * time.Second}, st, console.New())
+	t.Cleanup(m.StopAll)
+	return m
+}
+
+func pidOf(m *Manager, id string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if rs := m.running[id]; rs != nil && rs.cmd.Process != nil {
+		return rs.cmd.Process.Pid
+	}
+	return 0
+}
+
+// waitFor polls until cond holds.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestRestartReplacesTheProcess(t *testing.T) {
+	m := newRealManager(t)
+	realServer(t, m, "a", "")
+	if err := m.Start("a"); err != nil {
+		t.Fatal(err)
+	}
+	before := pidOf(m, "a")
+	if before == 0 {
+		t.Fatal("server did not start")
+	}
+	if err := m.Restart("a"); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	after := pidOf(m, "a")
+	if after == 0 || after == before {
+		t.Errorf("pid before = %d, after = %d: the process was not replaced", before, after)
+	}
+	if got := m.statusOf("a"); got != StatusRunning {
+		t.Errorf("status after Restart = %s", got)
+	}
+	// It went down the graceful way, not by force.
+	if out := logs(m, "a"); strings.Contains(out, "killing the process") {
+		t.Errorf("the restart killed the server:\n%s", out)
+	}
+}
+
+func TestDeleteWinsOverARestartInFlight(t *testing.T) {
+	m := newRealManager(t)
+	realServer(t, m, "a", "")
+	if err := m.Start("a"); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	m.deleting["a"] = true // a delete has begun
+	m.mu.Unlock()
+	if err := m.Restart("a"); err == nil || !strings.Contains(err.Error(), "being deleted") {
+		t.Errorf("Restart during a delete = %v, want a being-deleted error", err)
+	}
+	if pidOf(m, "a") != 0 {
+		t.Error("a server that is being deleted was started again")
+	}
+	v := "04:30"
+	if _, err := m.Update("a", UpdateInput{RestartSchedule: &v}); err == nil {
+		t.Error("Update of a server that is being deleted succeeded")
+	}
+	m.mu.Lock()
+	delete(m.deleting, "a")
+	m.mu.Unlock()
+	if err := m.Delete("a"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if err := m.Start("a"); err == nil {
+		t.Error("a deleted server could be started")
+	}
+}
+
+func TestRestartStartsAStoppedServer(t *testing.T) {
+	m := newRealManager(t)
+	realServer(t, m, "a", "")
+	if err := m.Restart("a"); err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if pidOf(m, "a") == 0 {
+		t.Error("a stopped server was not started by Restart")
+	}
+}
+
+func TestRequestRestart(t *testing.T) {
+	m := newRealManager(t)
+	if err := m.RequestRestart("missing"); err == nil {
+		t.Error("RequestRestart of an unknown server succeeded")
+	}
+	realServer(t, m, "a", "")
+	if err := m.Start("a"); err != nil {
+		t.Fatal(err)
+	}
+	before := pidOf(m, "a")
+	// Two requests in a row are one restart.
+	for i := 0; i < 2; i++ {
+		if err := m.RequestRestart("a"); err != nil {
+			t.Fatalf("RequestRestart: %v", err)
+		}
+	}
+	waitFor(t, "the restarted process", func() bool {
+		pid := pidOf(m, "a")
+		return pid != 0 && pid != before && m.statusOf("a") == StatusRunning
+	})
+	waitFor(t, "the restart to finish", func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return !m.restarting["a"]
+	})
+	if n := strings.Count(logs(m, "a"), "Restarting server..."); n != 1 {
+		t.Errorf("the server was restarted %d times, want once", n)
+	}
+}
+
+func TestUpdateRestartSchedule(t *testing.T) {
+	m := newRealManager(t)
+	realServer(t, m, "a", "")
+	set := func(v string) (View, error) { return m.Update("a", UpdateInput{RestartSchedule: &v}) }
+
+	v, err := set("04:30")
+	if err != nil || v.RestartSchedule != "04:30" {
+		t.Fatalf("set: %v, %q", err, v.RestartSchedule)
+	}
+	if s, _ := m.store.Get("a"); s.RestartSchedule != "04:30" {
+		t.Errorf("stored schedule = %q", s.RestartSchedule)
+	}
+	for _, bad := range []string{"4:30", "25:00", "soon", "04:30; stop"} {
+		if _, err := set(bad); err == nil {
+			t.Errorf("schedule %q was accepted", bad)
+		}
+	}
+	// Nothing given: nothing changes.
+	if v, err := m.Update("a", UpdateInput{}); err != nil || v.RestartSchedule != "04:30" {
+		t.Errorf("empty update: %v, %q", err, v.RestartSchedule)
+	}
+	if v, err := set(""); err != nil || v.RestartSchedule != "" {
+		t.Errorf("clear: %v, %q", err, v.RestartSchedule)
+	}
+	if _, err := m.Update("missing", UpdateInput{}); err == nil {
+		t.Error("Update of an unknown server succeeded")
+	}
+}
+
+func TestScheduleTickRestartsOnlyRunningServers(t *testing.T) {
+	m := newRealManager(t)
+	realServer(t, m, "up", "04:30")
+	realServer(t, m, "down", "04:30")
+	realServer(t, m, "none", "")
+	for _, id := range []string{"up", "none"} {
+		if err := m.Start(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	upBefore, noneBefore := pidOf(m, "up"), pidOf(m, "none")
+
+	day := func(h, mi, s int) time.Time { return time.Date(2026, 6, 10, h, mi, s, 0, time.Local) }
+	m.scheduleTick(day(4, 20, 0)) // first look
+	m.scheduleTick(day(4, 25, 0)) // 5-minute warning
+	if out := logs(m, "up"); !strings.Contains(out, "Scheduled restart in 5 minutes") {
+		t.Errorf("no warning in the console:\n%s", out)
+	}
+	if out := logs(m, "down"); strings.Contains(out, "Scheduled restart") {
+		t.Errorf("a stopped server was warned:\n%s", out)
+	}
+	m.scheduleTick(day(4, 30, 5)) // due
+
+	waitFor(t, "the scheduled restart", func() bool {
+		pid := pidOf(m, "up")
+		return pid != 0 && pid != upBefore && m.statusOf("up") == StatusRunning
+	})
+	if pidOf(m, "down") != 0 {
+		t.Error("a stopped server was started by its schedule")
+	}
+	if pidOf(m, "none") != noneBefore {
+		t.Error("a server without a schedule was restarted")
+	}
+	// The same occurrence is not acted on twice.
+	afterFirst := pidOf(m, "up")
+	m.scheduleTick(day(4, 30, 20))
+	time.Sleep(300 * time.Millisecond)
+	if pidOf(m, "up") != afterFirst {
+		t.Error("the same occurrence restarted the server twice")
+	}
+}

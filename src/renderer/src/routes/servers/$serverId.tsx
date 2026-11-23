@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Title, Stack, Paper, Group, Text, Badge, Button, ActionIcon, Tooltip, Tabs, RingProgress, Loader } from '@mantine/core'
-import { IconPlayerPlay, IconPlayerStop, IconTrash, IconTerminal2, IconSettings, IconPackage } from '@tabler/icons-react'
+import { IconPlayerPlay, IconPlayerStop, IconRefresh, IconTrash, IconTerminal2, IconSettings, IconPackage } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
@@ -10,6 +10,7 @@ import { engineLabel, isPluginPlatform } from '@shared/constants'
 import { ServerMods } from '../../components/servers/ServerMods'
 import { ServerConsole } from '../../components/servers/ServerConsole'
 import { ServerPropertiesEditor } from '../../components/servers/ServerPropertiesEditor'
+import { ServerRestartSchedule } from '../../components/servers/ServerRestartSchedule'
 import { useState, useEffect } from 'react'
 
 export const Route = createFileRoute('/servers/$serverId')({
@@ -60,6 +61,17 @@ function ServerDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['server', serverId] })
       notifications.show({ message: t('servers:serverStopped', { name: server?.name }), color: 'yellow' })
+    }
+  })
+
+  const restartMutation = useMutation({
+    mutationFn: () => window.api.restartServer(serverId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['server', serverId] })
+      notifications.show({ message: t('servers:serverStarted', { name: server?.name }), color: 'green' })
+    },
+    onError: (err: Error) => {
+      notifications.show({ title: 'Error', message: err.message, color: 'red' })
     }
   })
 
@@ -122,7 +134,7 @@ function ServerDetailPage() {
               leftSection={<IconPlayerStop size={18} />}
               onClick={() => stopMutation.mutate()}
               loading={stopMutation.isPending}
-              disabled={isBusy}
+              disabled={isBusy || restartMutation.isPending}
             >
               {t('servers:stop')}
             </Button>
@@ -133,9 +145,21 @@ function ServerDetailPage() {
               leftSection={<IconPlayerPlay size={18} />}
               onClick={() => startMutation.mutate()}
               loading={startMutation.isPending || isProvisioning}
-              disabled={isBusy}
+              disabled={isBusy || restartMutation.isPending}
             >
               {t('servers:start')}
+            </Button>
+          )}
+
+          {(isRunning || restartMutation.isPending) && (
+            <Button
+              variant="light"
+              leftSection={<IconRefresh size={18} />}
+              onClick={() => restartMutation.mutate()}
+              loading={restartMutation.isPending}
+              disabled={isBusy || stopMutation.isPending}
+            >
+              {t('servers:restart')}
             </Button>
           )}
 
@@ -284,7 +308,10 @@ function ServerDetailPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="settings" pt="xl">
-          <ServerPropertiesEditor serverId={server.id} />
+          <Stack gap="lg">
+            <ServerRestartSchedule serverId={server.id} schedule={server.restartSchedule} />
+            <ServerPropertiesEditor serverId={server.id} />
+          </Stack>
         </Tabs.Panel>
       </Tabs>
     </Stack>

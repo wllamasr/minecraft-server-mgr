@@ -64,6 +64,55 @@ test('quitting the app stops a running server cleanly', async () => {
     await page.evaluate((sid) => (window as unknown as ApiWindow).api.startServer(sid), id)
     await expect.poll(logText, { timeout: 6 * 60_000, intervals: [2000] }).toMatch(/Done \(\d/)
 
+    // ── Restart ───────────────────────────────────────────
+    const firstPid = (await server()).pid as number
+    expect(isAlive(firstPid)).toBe(true)
+    await page.evaluate((sid) => (window as unknown as ApiWindow).api.restartServer(sid), id)
+    // restartServer resolves once the old process is gone and the new one is launched.
+    expect(isAlive(firstPid)).toBe(false)
+    await expect.poll(async () => (await server()).pid, { timeout: 30_000 }).not.toBe(firstPid)
+    // The console starts over with each run, so this "Done" is the second boot.
+    await expect.poll(logText, { timeout: 6 * 60_000, intervals: [2000] }).toMatch(/Done \(\d/)
+    expect((await server()).status).toBe('running')
+    // The first run went down through its own shutdown, not by force.
+    expect(await logText()).not.toContain('killing the process')
+
+    // ── Scheduled restart setting ─────────────────────────
+    const settings = await page.evaluate(async (sid) => {
+      const api = (window as unknown as ApiWindow).api
+      const rejected = await api.updateServerSettings(sid, { restartSchedule: '4:30' }).then(() => '', (e: Error) => e.message)
+      const saved = await api.updateServerSettings(sid, { restartSchedule: '04:30' })
+      const reread = await api.getServer(sid)
+      const cleared = await api.updateServerSettings(sid, { restartSchedule: null })
+      return { rejected, saved: saved.restartSchedule, reread: reread.restartSchedule, cleared: cleared.restartSchedule }
+    }, id)
+    expect(settings.rejected).toMatch(/HH:MM/)
+    expect(settings.saved).toBe('04:30')
+    expect(settings.reread).toBe('04:30')
+    expect(settings.cleared).toBeNull()
+
+    // ── Scheduled restart, for real ───────────────────────
+    // Two to three minutes ahead: late enough for the 1-minute warning.
+    const due = new Date(Date.now() + 3 * 60_000)
+    due.setSeconds(0, 0)
+    const hhmm = `${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`
+    const scheduledPid = (await server()).pid as number
+    await page.evaluate(
+      ({ sid, at }) => (window as unknown as ApiWindow).api.updateServerSettings(sid, { restartSchedule: at }),
+      { sid: id, at: hhmm }
+    )
+    await expect.poll(logText, { timeout: 3 * 60_000, intervals: [2000] }).toContain('Scheduled restart in 1 minute')
+    // Players are told in chat too: the server echoes the say command.
+    await expect.poll(logText, { timeout: 15_000 }).toMatch(/\[Server\] Scheduled restart in 1 minute/)
+    await expect.poll(async () => (await server()).pid, { timeout: 2 * 60_000, intervals: [2000] }).not.toBe(scheduledPid)
+    expect(isAlive(scheduledPid)).toBe(false)
+    expect(Date.now()).toBeGreaterThanOrEqual(due.getTime())
+    await expect.poll(logText, { timeout: 6 * 60_000, intervals: [2000] }).toMatch(/Done \(\d/)
+    await page.evaluate(
+      (sid) => (window as unknown as ApiWindow).api.updateServerSettings(sid, { restartSchedule: null }),
+      id
+    )
+
     const running = await server()
     pid = running.pid
     expect(pid).toBeTruthy()

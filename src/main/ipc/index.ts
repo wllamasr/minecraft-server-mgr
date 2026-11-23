@@ -38,6 +38,14 @@ export function registerIpcHandlers(): void {
     await serverManager.stopServer(serverId)
   })
 
+  ipcMain.handle(IPC_CHANNELS.SERVER_RESTART, async (_e, serverId: string) => {
+    await serverManager.restartServer(serverId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SERVER_UPDATE_SETTINGS, (_e, { serverId, settings }) => {
+    return serverManager.updateServerSettings(serverId, settings)
+  })
+
   ipcMain.handle(IPC_CHANNELS.SERVER_DELETE, async (_e, serverId: string) => {
     await serverManager.deleteServer(serverId)
   })
@@ -92,6 +100,12 @@ export function registerIpcHandlers(): void {
   )
   ipcMain.handle('hosts:start', (_e, { hostId, serverId }) =>
     hostsManager.startRemoteServer(hostId, serverId)
+  )
+  ipcMain.handle('hosts:restart', (_e, { hostId, serverId }) =>
+    hostsManager.restartRemoteServer(hostId, serverId)
+  )
+  ipcMain.handle('hosts:update-server', (_e, { hostId, serverId, settings }) =>
+    hostsManager.updateRemoteServer(hostId, serverId, settings)
   )
   ipcMain.handle('hosts:stop', (_e, { hostId, serverId }) =>
     hostsManager.stopRemoteServer(hostId, serverId)
