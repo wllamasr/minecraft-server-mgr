@@ -62,7 +62,7 @@
     "@types/pidusage": "^2.0.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/uuid": "^10.0.0",
+    "@types/uuid": "^11.0.0",
     "@vitejs/plugin-react": "^6.3.0",
     "drizzle-kit": "^0.31.10",
     "electron": "^45.4.1",
