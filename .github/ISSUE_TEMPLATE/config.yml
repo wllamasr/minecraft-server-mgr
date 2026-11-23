@@ -3,6 +3,3 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/wllamasr/minecraft-server-mgr/security/advisories/new
     about: Please report security issues privately, not as a public issue.
-  - name: Question or discussion
-    url: https://github.com/wllamasr/minecraft-server-mgr/discussions
-    about: Ask usage questions here instead of opening an issue.

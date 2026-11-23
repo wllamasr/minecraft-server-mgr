@@ -30,9 +30,9 @@ and commits) and in public spaces when an individual represents the project.
 
 ## Enforcement
 
-Report unacceptable behavior to the maintainer through a private channel: open a
-[private security advisory](https://github.com/wllamasr/minecraft-server-mgr/security/advisories/new)
-on GitHub and mark it as a conduct report. Reports are reviewed and handled confidentially.
+Report unacceptable behavior privately to the maintainer, [@wllamasr](https://github.com/wllamasr),
+using the contact details on their GitHub profile. Do not report conduct issues in public issues or
+pull requests. Reports are reviewed and handled confidentially.
 The maintainer may take any action they deem appropriate, from a warning to a permanent ban
 from project spaces.
 

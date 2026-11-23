@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/wllamasr/minecraft-server-mgr/actions/workflows/ci.yml/badge.svg)](https://github.com/wllamasr/minecraft-server-mgr/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Electron](https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Electron](https://img.shields.io/badge/Electron-45-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
 
 Minecraft Server Manager (MSM) turns the tedious, terminal-driven chore of running a
 Minecraft server into a point-and-click experience. Download a server jar, pick a mod
@@ -28,24 +28,28 @@ from a single window. No batch scripts, no manual EULA edits.
   preserved on save.
 - **Auto-updates** — packaged builds update themselves via an NSIS installer.
 - **Internationalization** — UI strings are driven by i18next.
+- **Remote hosts** — pair with the `msmd` daemon on another machine to deploy and control
+  servers there (early stage; see the [daemon docs](daemon/README.md)).
 
 ## 🖥️ Tech stack
 
 | Layer            | Technology                                             |
 | ---------------- | ------------------------------------------------------ |
-| Shell            | Electron 44 (frameless, custom title bar)              |
+| Shell            | Electron 45 (frameless, custom title bar)              |
 | UI               | React 19 + Mantine UI 9 + Tabler Icons                 |
 | Routing / data   | TanStack Router + TanStack Query                       |
-| Build            | electron-vite (Vite 7) + electron-builder              |
+| Build            | electron-vite + electron-builder                       |
 | Persistence      | SQLite (better-sqlite3) + Drizzle ORM                  |
-| Testing          | Vitest                                                 |
+| Testing          | Vitest (unit) + Playwright (end-to-end UI)             |
+| Remote agent     | `msmd`, a dependency-free Go daemon (`daemon/`)         |
 | Language         | TypeScript (strict)                                    |
 
 ## 🚀 Getting started
 
 ### Prerequisites
 
-- **Node.js 20 LTS or newer** (CI runs on Node 20).
+- **Node.js 24 LTS** with npm 11 (CI runs on Node 24; Node 22.22.2+ also satisfies `engines`).
+  No C++ toolchain is required.
 - **A Java runtime** to actually run servers — Java 21 for Minecraft 1.20.5+, Java 17 for
   1.17–1.20, Java 8 for older releases. The app detects installed JDKs and links to
   [Adoptium](https://adoptium.net/) if none is found.
@@ -57,7 +61,7 @@ from a single window. No batch scripts, no manual EULA edits.
 ```bash
 git clone https://github.com/wllamasr/minecraft-server-mgr.git
 cd minecraft-server-mgr
-npm install
+npm ci
 npm run dev
 ```
 
@@ -78,8 +82,10 @@ npm run package    # build + produce a Windows installer via electron-builder
 | `npm run build`      | Bundle main, preload, and renderer into `out/`          |
 | `npm run package`    | Build and produce a Windows installer                   |
 | `npm run typecheck`  | Full TypeScript project build (`tsc --build`)            |
-| `npm test`           | Run the Vitest suite once                               |
+| `npm test`           | Run the Vitest unit tests once                          |
 | `npm run test:watch` | Run Vitest in watch mode                                |
+| `npm run test:e2e`   | Build, then run the Playwright UI tests against the real app |
+| `npm run check`      | Type-check, unit tests, and UI tests in one go          |
 | `npm run db:generate`| Generate Drizzle migrations from the schema             |
 
 ## 📁 Project structure
@@ -95,6 +101,18 @@ src/
 ├── renderer/        # React UI (routes, components, theme, i18n)
 └── shared/          # Types and constants shared across processes
 ```
+
+## ✅ Testing & CI
+
+Every push and pull request runs one pipeline ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+
+| Job | What it checks |
+| --- | --- |
+| **Desktop app (Windows)** | Type-check, Vitest unit tests, production build, and Playwright tests that launch the built app, walk every page, and verify the security boundaries (preload-only bridge, CSP, URL filtering). |
+| **Daemon** (Linux on the minimum and latest Go, plus Windows) | `gofmt`, `go vet`, unit tests with the race detector, cross-compilation, and a smoke test that runs the real binary over TLS and asserts on auth, pairing, and the API. |
+| **CI passed** | Single summary status to require in branch protection. |
+
+Run the same checks locally with `npm run check` and, in `daemon/`, `go test ./... && make smoke`.
 
 ## 📚 Documentation
 

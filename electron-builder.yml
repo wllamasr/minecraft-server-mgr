@@ -10,6 +10,9 @@ files:
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!{drizzle.config.ts,postcss.config.cjs}'
+# better-sqlite3 ships prebuilt N-API binaries for every target, so no native
+# rebuild (and no C++ toolchain) is needed when packaging.
+npmRebuild: false
 asarUnpack:
   - resources/**
   - '**/*.node'

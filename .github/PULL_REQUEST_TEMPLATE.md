@@ -18,4 +18,4 @@
 - [ ] New IPC channels are documented in `docs/IPC.md` and exposed only through `src/preload`.
 - [ ] Docs (README, `docs/`, user guide) are updated where behavior changed.
 - [ ] No secrets, tokens, or personal data are included in the diff or the logs.
-- [ ] I have read the [Contributing guide](CONTRIBUTING.md).
+- [ ] I have read the [Contributing guide](https://github.com/wllamasr/minecraft-server-mgr/blob/main/CONTRIBUTING.md).

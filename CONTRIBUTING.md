@@ -13,19 +13,21 @@ By participating you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md)
 - **Security issues are private.** Never report vulnerabilities in a public issue or PR. Follow
   [SECURITY.md](SECURITY.md).
 - **One concern per pull request.** Keep changes focused; avoid unrelated refactors.
-- **Every change is reviewed.** `main` is protected: changes land through a pull request that
-  passes CI and has an approving review from the code owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)).
-  Direct pushes to `main` are reserved for the maintainer.
+- **Every change is reviewed.** Contributions land through a pull request that passes the
+  **CI passed** check and is reviewed by the code owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)).
+  Only the maintainer pushes to `main` directly.
 
 ## Requirements
 
-| Tool      | Version                              |
-| --------- | ------------------------------------ |
-| Node.js   | 20 LTS or newer (CI uses 20)         |
-| npm       | Bundled with Node.js                 |
-| Go        | 1.22 or newer (daemon work only)     |
-| Java      | 21 (to run servers during manual testing) |
-| OS        | Windows 10/11 for the Electron app; Linux for the daemon |
+| Tool      | Version                                                        |
+| --------- | -------------------------------------------------------------- |
+| Node.js   | 24 LTS (CI uses 24). 22.22.2+ also satisfies `engines`.          |
+| npm       | 11 or newer (bundled with Node.js 24)                          |
+| Go        | 1.22 or newer (daemon work only)                               |
+| Java      | 21 (to run servers during manual testing)                      |
+| OS        | Windows 10/11 for the Electron app; Linux or Windows for the daemon |
+
+No C++ toolchain is needed: `better-sqlite3` ships prebuilt binaries.
 
 ## Development setup
 
@@ -36,15 +38,14 @@ npm ci             # reproducible install from package-lock.json
 npm run dev
 ```
 
-`npm ci` runs `electron-builder install-app-deps`, which rebuilds the native `better-sqlite3`
-module. If it fails to load after switching Node or Electron versions, run:
+`npm ci` finishes by running `install-electron` (the project's `postinstall`), which downloads
+the Electron binary. If Electron is missing afterwards (`Error: Electron uninstall`), run
+`npm run postinstall` again.
 
-```bash
-npm run postinstall
-```
-
-Electron downloads its binary during install. If it is missing (`Error: Electron uninstall`),
-run `node node_modules/electron/install.js`.
+Install scripts of dependencies are reviewed and listed in the `allowScripts` field of
+`package.json`. `better-sqlite3` is set to `false` there on purpose: its bundled prebuilt
+binary is used, so its `node-gyp` build is skipped. With an npm older than 11 that field is
+ignored and the build needs Visual Studio's C++ workload.
 
 ### Daemon (Go)
 
@@ -53,6 +54,7 @@ cd daemon
 go vet ./...
 go test ./...
 make build       # pure Go, CGO_ENABLED=0
+make smoke       # builds the binary, runs it over TLS and checks the API (needs curl)
 ```
 
 See [daemon/README.md](daemon/README.md) and [daemon/TESTING.md](daemon/TESTING.md) for running it.
@@ -65,11 +67,13 @@ All of these must pass locally. CI runs the same checks.
 # Electron app
 npm run typecheck   # tsc --build across main, preload and renderer
 npm test            # Vitest unit tests
-npm run build       # electron-vite production bundle
+npm run test:e2e    # production build + Playwright tests against the real app
 
 # Daemon (only if daemon/ changed)
-cd daemon && go vet ./... && go test ./...
+cd daemon && gofmt -l . && go vet ./... && go test ./... && make smoke
 ```
+
+`npm run check` runs the three app commands in order.
 
 ## Project layout
 
@@ -97,6 +101,12 @@ These are hard requirements; reviewers will request changes if they are not met.
 
 - The renderer must not use Node APIs. Go through `window.api`.
 - Keep `contextIsolation: true` and `nodeIntegration: false` on every `BrowserWindow`.
+- Never inject third-party HTML without `sanitizeRemoteHtml`, and do not weaken the renderer's
+  Content-Security-Policy (`RENDERER_CSP` in `electron.vite.config.ts`). The renderer does not call
+  remote APIs itself (`connect-src 'self'`); fetch through the main process.
+- Never pass a filesystem path from the renderer to a privileged operation; pass a server id and
+  resolve the path in the main process.
+- Only `http(s)` URLs may reach `shell.openExternal` (use `isSafeExternalUrl`).
 - Never execute shell strings built from user input. Spawn processes with an argument array.
 - Validate all paths that originate from the renderer or the network; stay within the server's
   data directory.
@@ -118,6 +128,13 @@ These are hard requirements; reviewers will request changes if they are not met.
   ```
 
 - Run a single file: `npx vitest run src/main/services/java-detector.test.ts`.
+- Tests that need a DOM opt in per file with `// @vitest-environment jsdom`.
+- **UI tests** live in `e2e/` and use Playwright to launch the built Electron app with a
+  temporary profile (`--user-data-dir`), so they never touch your real servers or database.
+  They need no browser download. Add a test there when you add a page or change the preload
+  bridge. Keep them independent of the network.
+- **Daemon end-to-end checks** live in `daemon/scripts/smoke.sh`. Every check must assert
+  (exit non-zero on failure), not just print.
 - Bug fixes should include a regression test whenever practical.
 
 ## Coding style
@@ -153,7 +170,10 @@ Use the scope of the area you changed (`servers`, `mods`, `daemon`, `ipc`, `ci`,
 
 ## Pull request review
 
-1. CI must be green (typecheck, tests, and build for the app; vet, test, and cross-compile for the daemon).
+1. CI must be green. One workflow ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on
+   every push and pull request: the **Desktop app** job (type-check, unit tests, build, end-to-end
+   UI tests on Windows) and the **Daemon** jobs (gofmt, vet, race-enabled tests, cross-compile,
+   smoke test on Linux and Windows). **CI passed** summarizes them.
 2. The code owner reviews the change. Expect requests for changes on style, scope, and tests.
 3. Squash-merge is preferred so `main` keeps one Conventional Commit per change.
 

@@ -48,6 +48,14 @@ Out of scope:
 
 - The renderer runs with `contextIsolation: true` and `nodeIntegration: false`. It may only
   reach the main process through the typed `window.api` surface in `src/preload`.
+- Packaged builds ship a Content-Security-Policy that allows only bundled scripts and no
+  fetch/XHR/WebSocket connections from the renderer (it may still load remote images and the
+  UI fonts). Third-party HTML (mod descriptions) is sanitized before
+  it is rendered.
+- Only `http(s)` links are handed to the operating system, and the window cannot navigate away
+  from the bundled UI.
+- Downloads follow a bounded number of redirects, never downgrade from https to http, and
+  remove partial files on failure. Modpack archives are extracted only inside the server folder.
 - The daemon authenticates every API route except health and pairing with a bearer token,
   compared in constant time, and serves over TLS with a pinned certificate fingerprint.
 

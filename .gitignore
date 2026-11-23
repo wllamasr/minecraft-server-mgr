@@ -9,3 +9,5 @@ dist/
 .env
 .env.local
 dev-app-update.yml
+test-results/
+playwright-report/

@@ -9,8 +9,11 @@ MSM is a single-user desktop application for creating and operating **local** Mi
 Java Edition servers on a personal machine. It manages multiple server instances, their
 mods, configuration, runtime lifecycle, and live diagnostics.
 
-Out of scope: remote/headless server orchestration, Bedrock edition, proxy networks
-(BungeeCord/Velocity), and multi-user access control.
+Managing servers on **remote hosts** through the `msmd` daemon is an additive, early-stage
+capability specified separately in [DAEMON.md](DAEMON.md); this document covers local servers.
+
+Out of scope: Bedrock edition, proxy networks (BungeeCord/Velocity), and multi-user access
+control.
 
 ## 2. Personas
 
