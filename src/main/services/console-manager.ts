@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from 'child_process'
+import { StringDecoder } from 'string_decoder'
 import { BrowserWindow } from 'electron'
 import log from '../utils/logger'
 import { IPC_EVENTS } from '../../shared/constants'
@@ -92,15 +93,26 @@ export function attachConsole(serverId: string, childProcess: ChildProcess): voi
     }
   }
 
-  childProcess.stdout?.on('data', (data: Buffer) => {
-    const lines = data.toString().split('\n').filter(Boolean)
-    lines.forEach(l => pushLine(l, false))
-  })
-
-  childProcess.stderr?.on('data', (data: Buffer) => {
-    const lines = data.toString().split('\n').filter(Boolean)
-    lines.forEach((line) => pushLine(line, true))
-  })
+  // Output arrives in chunks that can end in the middle of a line (or of a
+  // character). Only whole lines are passed on: a listener must never see the
+  // tail of a line as if it were a line of its own.
+  const readLines = (stream: NodeJS.ReadableStream | null | undefined, isErrorStream: boolean): void => {
+    if (!stream) return
+    const decoder = new StringDecoder('utf8')
+    let pending = ''
+    stream.on('data', (data: Buffer) => {
+      const parts = (pending + decoder.write(data)).split('\n')
+      pending = parts.pop() ?? ''
+      for (const line of parts) if (line) pushLine(line, isErrorStream)
+    })
+    stream.on('end', () => {
+      const rest = pending + decoder.end()
+      pending = ''
+      if (rest) pushLine(rest, isErrorStream)
+    })
+  }
+  readLines(childProcess.stdout, false)
+  readLines(childProcess.stderr, true)
 
   // Preserve any provisioning logs that were buffered before the process
   // started, so the console shows a continuous history.

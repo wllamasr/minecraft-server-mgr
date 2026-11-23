@@ -220,7 +220,7 @@ describe('backup and restore', () => {
 
 describe('extractArchive', () => {
   it('rejects names Windows would read as another path', async () => {
-    for (const name of ['logs./x.log', 'world/level.dat.', 'world /level.dat', 'world/level.dat:stream']) {
+    for (const name of ['logs./x.log', 'world/level.dat.', 'world /level.dat', 'world/level.dat:stream', 'world/NUL', 'config/com1.txt']) {
       const zip = join(work, 'odd.zip')
       await craftZip(zip, (z) => z.addBuffer(Buffer.from('x'), name))
       const stage = join(work, 'stage-odd')

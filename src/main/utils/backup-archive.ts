@@ -306,7 +306,17 @@ export async function extractArchive(zipPath: string, destDir: string, options: 
       }
       // Windows drops a trailing dot or space and reads "a:b" as a stream of
       // "a", so such a name could stand for a path the checks did not see.
-      if (clean.split('/').some((segment) => /[. ]$/.test(segment) || segment.includes(':'))) {
+      // Nor a device name (CON, NUL, COM1...), with or without an extension.
+      if (
+        clean
+          .split('/')
+          .some(
+            (segment) =>
+              /[. ]$/.test(segment) ||
+              segment.includes(':') ||
+              /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.|$)/i.test(segment)
+          )
+      ) {
         throw new Error(`The backup contains a file name that is not allowed: ${name}`)
       }
       if (!isBackedUpTopLevel(clean.split('/')[0])) {

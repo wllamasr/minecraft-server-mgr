@@ -564,10 +564,13 @@ async function removeServer(serverId: string): Promise<void> {
 
   // Remove server directory
   const { rmSync } = require('fs')
-  try {
-    rmSync(server.absolutePath, { recursive: true, force: true })
-  } catch (err) {
-    log.warn(`[ServerManager] Could not delete directory: ${server.absolutePath}`, err)
+  // ...and what a restore may have left beside it.
+  for (const dir of [server.absolutePath, `${server.absolutePath}.restore-stage`, `${server.absolutePath}.restore-aside`]) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+    } catch (err) {
+      log.warn(`[ServerManager] Could not delete directory: ${dir}`, err)
+    }
   }
 
   log.info(`[ServerManager] Deleted server "${server.name}"`)

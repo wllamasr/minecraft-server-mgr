@@ -18,7 +18,8 @@ All notable changes to this project are documented here. The format follows
     the server to confirm, copies, and sends `save-on`. If the server does not confirm, the backup
     fails instead of producing an unreliable copy.
   - Restoring needs the server to be stopped. The backup is unpacked completely first and then
-    swapped in; if anything fails the server files are put back as they were. Files that are not
+    swapped in; if anything fails the server files are put back as they were (if even
+    that cannot be done, the error names the folder that holds the replaced files). Files that are not
     part of backups (logs, libraries) are left alone, and everything else is replaced, so no file
     from after the backup survives. By default the current files are backed up first ("before
     restore" in the list), so a restore can be undone.

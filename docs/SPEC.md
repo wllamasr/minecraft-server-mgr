@@ -118,7 +118,7 @@ control.
   margin; the check is skipped when the free space cannot be read.
 - **FR-13b** A **running** server is backed up consistently: `save-off`, `save-all flush`, wait
   for the server's own confirmation line (chat cannot fake it), copy, then `save-on` (not sent
-  if saving was already off). No confirmation within the time limit fails the backup.
+  if the server answered that saving was already off; sent if the answer was never seen). No confirmation within the time limit fails the backup.
 - **FR-13c** The user can **restore** a backup onto a stopped server. The archive is validated
   (no links, no paths outside the server directory, no entries backups do not cover) and
   unpacked to a staging directory beside the server directory; then the covered top-level
