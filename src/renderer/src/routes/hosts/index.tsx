@@ -266,6 +266,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
                 </ActionIcon>
               ) : (
                 <ActionIcon variant="light" color="green"
+                  disabled={s.status === 'stopping' || s.status === 'starting' || s.status === 'provisioning'}
                   onClick={() => action(window.api.startRemoteServer(host.id, s.id), 'Starting…')}>
                   <IconPlayerPlay size={16} />
                 </ActionIcon>

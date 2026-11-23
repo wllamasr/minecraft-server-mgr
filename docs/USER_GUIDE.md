@@ -70,13 +70,22 @@ Creating a server does not start it. Start it when you are ready.
 ## 4. Starting and stopping
 
 - **Start** launches the server with its Java runtime and RAM settings.
-- **Stop** asks the server to shut down cleanly, so the world is saved.
+- **Stop** asks the server to shut down cleanly, so the world is saved. The server gets up to
+  2 minutes to save and exit; if it is still running after that it is killed, and the console
+  shows a warning because recent changes may not have been saved.
 - **Restart** stops and starts the server again. Use it to apply configuration or mod changes.
 - **Delete** removes the server and its folder, including the world. This cannot be undone, so
   back up first (see [Settings and data locations](#11-settings-and-data-locations)).
 
 A server has one status at a time: `stopped`, `starting`, `running`, `stopping`, or `crashed`.
 A *crashed* server exited unexpectedly; check its console for the reason.
+
+**Quitting the app stops your servers.** Local servers run as part of the app, so when you quit
+while servers are running, the app stops each of them the same way **Stop** does and closes once
+they are down. With a large world this can take a while: on Windows and Linux the window closes first and the
+app keeps running in the background until the servers have saved, so wait a moment before
+opening it again. Servers on a remote host are not affected: they keep running
+when you quit the app, and are stopped cleanly when the `msmd` service on that host is stopped.
 
 ## 5. The live console
 

@@ -37,10 +37,11 @@ const (
 )
 
 const (
-	stopGrace       = 30 * time.Second
 	maxRestarts     = 3
 	restartWindow   = time.Minute
 	restartCooldown = 5 * time.Second
+	// killWait bounds the wait for the exit after a forced kill.
+	killWait = 10 * time.Second
 )
 
 // CreateInput describes a new server request.
@@ -88,22 +89,34 @@ type Manager struct {
 	hub   *console.Hub
 	java  *java.Manager
 
-	mu           sync.Mutex
-	running      map[string]*runningServer
-	provisioning map[string]Status
-	restarts     map[string][]time.Time
+	// stopGrace is how long a server gets to save and exit after "stop"
+	// before it is killed.
+	stopGrace time.Duration
+
+	mu            sync.Mutex
+	running       map[string]*runningServer
+	provisioning  map[string]Status
+	restarts      map[string][]time.Time
+	restartTimers map[string]*time.Timer
+	// shuttingDown is set by StopAll: nothing is started or restarted after it.
+	shuttingDown bool
 }
 
 // NewManager constructs a Manager.
 func NewManager(cfg config.Config, st *store.Store, hub *console.Hub) *Manager {
+	if cfg.StopGrace <= 0 {
+		cfg.StopGrace = config.DefaultStopGrace
+	}
 	return &Manager{
-		cfg:          cfg,
-		store:        st,
-		hub:          hub,
-		java:         java.New(cfg.JavaDir, cfg.JavaPath),
-		running:      map[string]*runningServer{},
-		provisioning: map[string]Status{},
-		restarts:     map[string][]time.Time{},
+		cfg:           cfg,
+		store:         st,
+		hub:           hub,
+		java:          java.New(cfg.JavaDir, cfg.JavaPath),
+		stopGrace:     cfg.StopGrace,
+		running:       map[string]*runningServer{},
+		provisioning:  map[string]Status{},
+		restarts:      map[string][]time.Time{},
+		restartTimers: map[string]*time.Timer{},
 	}
 }
 
@@ -249,6 +262,11 @@ func (m *Manager) Create(in CreateInput) (store.Server, error) {
 // Start launches a server process.
 func (m *Manager) Start(id string) error {
 	m.mu.Lock()
+	if m.shuttingDown {
+		m.mu.Unlock()
+		return errors.New("the daemon is shutting down")
+	}
+	m.cancelRestartLocked(id)
 	if _, ok := m.running[id]; ok {
 		m.mu.Unlock()
 		return errors.New("server is already running")
@@ -276,7 +294,12 @@ func (m *Manager) Start(id string) error {
 		return err
 	}
 
-	cmd := buildLaunchCmd(s, javaPath)
+	return m.launch(id, s, buildLaunchCmd(s, javaPath))
+}
+
+// launch starts cmd as the process of server id and tracks it until it exits.
+func (m *Manager) launch(id string, s store.Server, cmd *exec.Cmd) error {
+	isolate(cmd)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -297,6 +320,17 @@ func (m *Manager) Start(id string) error {
 
 	rs := &runningServer{cmd: cmd, stdin: stdin, status: StatusRunning, exited: make(chan struct{})}
 	m.mu.Lock()
+	if m.shuttingDown || m.running[id] != nil {
+		// Lost a race with a shutdown or with another start of the same server.
+		shuttingDown := m.shuttingDown
+		m.mu.Unlock()
+		killTree(cmd)
+		_ = cmd.Wait()
+		if shuttingDown {
+			return errors.New("the daemon is shutting down")
+		}
+		return errors.New("server is already running")
+	}
 	m.running[id] = rs
 	m.mu.Unlock()
 
@@ -308,30 +342,124 @@ func (m *Manager) Start(id string) error {
 	return nil
 }
 
-// Stop asks a server to shut down gracefully, then force-kills after a grace period.
+// Stop asks a server to shut down and returns once its process is gone. The
+// server gets the stop grace period to save and exit on its own; only then is
+// it killed, together with everything it started.
 func (m *Manager) Stop(id string) error {
+	rs, first, err := m.beginStop(id)
+	if err != nil {
+		return err
+	}
+	if !first {
+		// Another caller is driving the stop: share its outcome.
+		select {
+		case <-rs.exited:
+			return nil
+		case <-time.After(m.stopGrace + 2*killWait):
+			return errors.New("server process could not be killed")
+		}
+	}
+	return m.finishStop(id, rs)
+}
+
+// RequestStop starts stopping a server and returns at once: the server is
+// "stopping" when it returns and becomes "stopped" when its process is gone.
+// A shutdown can take minutes, far longer than an API call should block.
+func (m *Manager) RequestStop(id string) error {
+	rs, first, err := m.beginStop(id)
+	if err != nil {
+		return err
+	}
+	if first {
+		go func() {
+			if err := m.finishStop(id, rs); err != nil {
+				m.hub.PushLog(id, "Stop failed: "+err.Error(), "ERROR")
+			}
+		}()
+	}
+	return nil
+}
+
+// beginStop marks the server as stopping and sends it the stop command. first
+// is false when a stop was already in progress.
+func (m *Manager) beginStop(id string) (rs *runningServer, first bool, err error) {
 	m.mu.Lock()
-	rs := m.running[id]
+	m.cancelRestartLocked(id)
+	rs = m.running[id]
 	if rs == nil {
 		m.mu.Unlock()
-		return errors.New("server is not running")
+		return nil, false, errors.New("server is not running")
 	}
+	first = !rs.stopping
 	rs.stopping = true
 	rs.status = StatusStopping
 	m.mu.Unlock()
 
-	m.broadcast(id, StatusStopping)
-	_, _ = io.WriteString(rs.stdin, "stop\n")
+	if first {
+		m.broadcast(id, StatusStopping)
+		_, _ = io.WriteString(rs.stdin, "stop\n")
+	}
+	return rs, first, nil
+}
 
+// finishStop waits for a stopping server to exit and kills it when the grace
+// period runs out.
+func (m *Manager) finishStop(id string, rs *runningServer) error {
+	grace := time.NewTimer(m.stopGrace)
+	defer grace.Stop()
 	select {
 	case <-rs.exited:
-	case <-time.After(stopGrace):
-		if rs.cmd.Process != nil {
-			_ = rs.cmd.Process.Kill()
+	case <-grace.C:
+		m.hub.PushLog(id, fmt.Sprintf("Server did not stop within %s — killing the process. Recent changes may not have been saved.", m.stopGrace), "WARN")
+		killTree(rs.cmd)
+		select {
+		case <-rs.exited:
+		case <-time.After(killWait):
+			return errors.New("server process could not be killed")
 		}
-		<-rs.exited
 	}
 	return nil
+}
+
+// StopAll stops every running server and refuses to start any from then on.
+// It is the daemon's shutdown path: no server is left running without the
+// daemon that controls it, and none is cut off in the middle of a save.
+func (m *Manager) StopAll() {
+	m.mu.Lock()
+	m.shuttingDown = true
+	for id := range m.restartTimers {
+		m.cancelRestartLocked(id)
+	}
+	ids := make([]string, 0, len(m.running))
+	for id := range m.running {
+		ids = append(ids, id)
+	}
+	m.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for _, id := range ids {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			_ = m.Stop(id)
+		}(id)
+	}
+	wg.Wait()
+}
+
+// RunningCount reports how many server processes are alive.
+func (m *Manager) RunningCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.running)
+}
+
+// cancelRestartLocked drops a pending crash auto-restart. m.mu must be held.
+func (m *Manager) cancelRestartLocked(id string) {
+	if t := m.restartTimers[id]; t != nil {
+		t.Stop()
+		delete(m.restartTimers, id)
+	}
 }
 
 // Delete stops (if running) and removes a server and its files.
@@ -349,6 +477,7 @@ func (m *Manager) Delete(id string) error {
 	}
 
 	m.mu.Lock()
+	m.cancelRestartLocked(id)
 	delete(m.provisioning, id)
 	delete(m.restarts, id)
 	m.mu.Unlock()
@@ -393,14 +522,16 @@ func (m *Manager) stream(id string, r io.Reader, isErr bool) {
 
 func (m *Manager) waitExit(id string, rs *runningServer, s store.Server) {
 	err := rs.cmd.Wait()
-	close(rs.exited)
 
 	m.mu.Lock()
-	wasStopping := rs.stopping
+	wasStopping := rs.stopping || m.shuttingDown
 	if m.running[id] == rs {
 		delete(m.running, id)
 	}
 	m.mu.Unlock()
+	// Tell Stop last, after the final status went out: once Stop returns, the
+	// server can be started again and its events must not trail behind.
+	defer close(rs.exited)
 
 	crashed := err != nil && !wasStopping
 	if crashed {
@@ -435,20 +566,32 @@ func (m *Manager) scheduleRestart(id, name string) {
 	}
 	recent = append(recent, now)
 	m.restarts[id] = recent
-	m.mu.Unlock()
-
-	m.hub.PushLog(id, fmt.Sprintf("Server crashed — auto-restarting in %ds...", int(restartCooldown.Seconds())), "WARN")
-	time.AfterFunc(restartCooldown, func() {
+	if m.shuttingDown {
+		m.mu.Unlock()
+		return
+	}
+	m.cancelRestartLocked(id)
+	var timer *time.Timer
+	timer = time.AfterFunc(restartCooldown, func() {
 		m.mu.Lock()
+		// A stop, delete or shutdown since then replaced or removed this timer.
+		current := m.restartTimers[id] == timer
+		if current {
+			delete(m.restartTimers, id)
+		}
 		_, running := m.running[id]
 		m.mu.Unlock()
-		if running {
+		if !current || running {
 			return
 		}
 		if err := m.Start(id); err != nil {
 			m.hub.PushLog(id, "Auto-restart failed: "+err.Error(), "ERROR")
 		}
 	})
+	m.restartTimers[id] = timer
+	m.mu.Unlock()
+
+	m.hub.PushLog(id, fmt.Sprintf("Server crashed — auto-restarting in %ds...", int(restartCooldown.Seconds())), "WARN")
 }
 
 func (m *Manager) setProvisioning(id string, status Status) {

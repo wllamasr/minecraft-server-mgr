@@ -70,6 +70,16 @@ Configuration (flags or environment):
 | `-data`  | `MSMD_DATA`         | `./msmd-data`  | state dir (cert, token, db)     |
 |          | `MSMD_SERVERS_ROOT` | `<data>/servers` | where servers live            |
 |          | `MSMD_JAVA`         | `java`         | java binary to launch servers   |
+|          | `MSMD_STOP_GRACE`   | `2m`           | how long a server gets to save and exit after `stop` before it is killed (a duration such as `90s` or `5m`) |
+
+**Shutdown.** On `SIGTERM`, `SIGINT` or a hangup (the terminal or SSH session closing), msmd stops every running server before it exits: each
+one gets the `stop` command and up to `MSMD_STOP_GRACE` to save; whatever is still running after
+that is killed together with its child processes. The API keeps answering during the shutdown,
+and no server is started or auto-restarted any more. The systemd unit in `deploy/` uses
+`KillMode=mixed` (signal only msmd, not the servers) and `TimeoutStopSec=180`; if you raise
+`MSMD_STOP_GRACE`, raise `TimeoutStopSec` above it too, or systemd kills the servers first. If
+you installed the unit before this change, copy the new `deploy/msmd.service` over
+`/etc/systemd/system/msmd.service` and run `systemctl daemon-reload`.
 
 ## Try it (no manager needed yet)
 

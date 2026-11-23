@@ -79,10 +79,17 @@ control.
   Forge/NeoForge use the generated `run.bat`/`run.sh` and write RAM into
   `user_jvm_args.txt`.
 - **FR-12** Stop issues the `stop` console command for a graceful shutdown and force-kills
-  after 30 seconds if the process has not exited.
+  the server's whole process tree after 2 minutes (override: `MSM_STOP_GRACE_MS`) if it has not
+  exited, logging a warning to the console. Stop completes only when the process is gone.
+  Repeated stop requests share one shutdown. A server that exits after a stop request is
+  `stopped`, never `crashed`, whatever its exit code.
+- **FR-12a** Quitting the app with servers running stops all of them (FR-12) before the app
+  exits, cancels pending auto-restarts, and starts no server from then on. With no server
+  running, quitting is immediate.
 - **FR-12b** When **auto-restart** is enabled, a server that exits with a non-zero code
   (a crash, not an intentional stop) is restarted after a short delay, up to 3 times per
-  minute before giving up, with each attempt logged to the console.
+  minute before giving up, with each attempt logged to the console. Stopping, starting or
+  deleting the server cancels a restart that is still pending.
 - **FR-13** Delete stops the server if running, removes its DB row, and deletes its
   directory. Failure to delete files is logged but does not abort the row removal.
 

@@ -156,9 +156,24 @@ func runServe(args []string) {
 	idle := make(chan struct{})
 	go func() {
 		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		signals := []os.Signal{syscall.SIGINT, syscall.SIGTERM}
+		// A closed terminal or SSH session must take the servers down cleanly
+		// too, not kill msmd and leave them behind. Under nohup the hangup
+		// stays ignored.
+		if !signal.Ignored(syscall.SIGHUP) {
+			signals = append(signals, syscall.SIGHUP)
+		}
+		signal.Notify(sig, signals...)
 		<-sig
-		log.Printf("shutting down...")
+		// Servers first: they are our child processes, and a world that is cut
+		// off mid-save is worse than a slow shutdown. The API keeps answering
+		// meanwhile, so the manager can watch them go down.
+		if n := mgr.RunningCount(); n > 0 {
+			log.Printf("shutting down: stopping %d running server(s), up to %s each...", n, cfg.StopGrace)
+		} else {
+			log.Printf("shutting down...")
+		}
+		mgr.StopAll()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(ctx)

@@ -20,6 +20,10 @@ import (
 	"time"
 )
 
+// DefaultStopGrace is how long a server gets to shut down unless
+// MSMD_STOP_GRACE says otherwise. Saving a large world takes a while.
+const DefaultStopGrace = 2 * time.Minute
+
 // Config is the resolved runtime configuration.
 type Config struct {
 	Addr        string // listen address, e.g. ":8443"
@@ -31,6 +35,9 @@ type Config struct {
 	StorePath   string // servers.json
 	JavaPath    string // optional fixed java binary; empty means auto-manage
 	JavaDir     string // where auto-installed JDKs are kept
+	// StopGrace is how long a server gets to save and exit after "stop" before
+	// it is killed.
+	StopGrace time.Duration
 }
 
 // Load resolves configuration from explicit values, environment, and defaults.
@@ -56,6 +63,14 @@ func Load(addr, dataDir string) (Config, error) {
 		StorePath:   filepath.Join(abs, "servers.json"),
 		JavaPath:    os.Getenv("MSMD_JAVA"), // empty => auto-detect/-install
 		JavaDir:     envOr("MSMD_JAVA_DIR", filepath.Join(abs, "jdks")),
+		StopGrace:   DefaultStopGrace,
+	}
+	if v := os.Getenv("MSMD_STOP_GRACE"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < time.Second {
+			return Config{}, fmt.Errorf("MSMD_STOP_GRACE must be a duration of at least 1s, like 90s or 5m (got %q)", v)
+		}
+		cfg.StopGrace = d
 	}
 	return cfg, nil
 }

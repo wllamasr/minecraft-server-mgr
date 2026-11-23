@@ -52,6 +52,11 @@ All notable changes to this project are documented here. The format follows
 - Community files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull request templates,
   `CODEOWNERS`, and Dependabot configuration.
 - User guide (`docs/USER_GUIDE.md`).
+- Quitting the app with servers running now stops them first: each server gets the `stop`
+  command and time to save, and the app exits once they are down. The same happens in `msmd` on
+  `SIGTERM`/`SIGINT` (for example `systemctl stop msmd`); the API keeps answering while the
+  servers shut down. `msmd` reads the grace period from `MSMD_STOP_GRACE` (a duration such as
+  `90s` or `5m`, default `2m`).
 
 ### Security
 
@@ -94,9 +99,28 @@ All notable changes to this project are documented here. The format follows
   react-i18next 18, adm-zip 0.6, and in-range updates across the Mantine, TanStack, and
   other packages.
 - `engines.node` set to `^22.22.2 || ^24.15.0 || >=26.0.0`; CI runs on Node 24 and current GitHub Actions.
+- **Stop** waits up to 2 minutes (was 30 seconds) for a server to save and exit before killing
+  it, in the app and in `msmd`. A forced stop is logged as a warning in the server console.
+  For local servers, `MSM_STOP_GRACE_MS` overrides the wait.
+- `msmd`: `POST /v1/servers/{id}/stop` answers `202` at once with the server in status
+  `stopping`, instead of blocking until the server is down (which could outlast the manager's
+  30-second request timeout). Clients watch the status until it is `stopped`.
+- The `msmd` systemd unit sets `KillMode=mixed` and `TimeoutStopSec=180`, so stopping the
+  service signals only `msmd`, which shuts its servers down itself. Existing installs need the
+  updated unit file to get this.
 
 ### Fixed
 
+- Quitting the app (or stopping `msmd`) left running servers behind as orphaned Java processes
+  with no console attached. They are now shut down cleanly first.
+- A stop that had to kill the server returned before the process was gone, so an immediate
+  start or delete could collide with the old process. Stop now returns only once it has exited.
+- A forced stop killed only the launcher script of a Forge or NeoForge server (`run.bat` /
+  `run.sh`) and left its JVM running. The whole process tree is killed now.
+- A server that was stopped on purpose is no longer reported as `crashed` when it exits with a
+  non-zero code or has to be killed.
+- A crash auto-restart that was already scheduled could start a server again after it was
+  stopped or deleted, or while the app was quitting. Pending auto-restarts are now cancelled.
 - Java requirement mapping: Minecraft 26.x now requires Java 25 (it was mapped to Java 8), and
   1.20.5 and 1.20.6 now require Java 21 (they were mapped to Java 17). The full mapping is 26.x:
   Java 25; 1.20.5 to 1.21.x: Java 21; 1.17 to 1.20.4: Java 17; 1.16.5 and older: Java 8.

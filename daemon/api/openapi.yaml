@@ -117,7 +117,14 @@ paths:
   /v1/servers/{id}/start:
     post: { summary: Start a server, responses: { "202": { description: Accepted } } }
   /v1/servers/{id}/stop:
-    post: { summary: Stop a server, responses: { "202": { description: Accepted } } }
+    post:
+      summary: Stop a server
+      description: >-
+        Sends the stop command and returns at once, with the server in status "stopping". The
+        server gets the stop grace period (MSMD_STOP_GRACE, default 2m) to save and exit, and
+        is killed after that. Watch the status until it is "stopped". (Older daemons answered
+        only once the server had stopped.)
+      responses: { "202": { description: Accepted } }
   /v1/servers/{id}/command:
     post:
       summary: Send a console command

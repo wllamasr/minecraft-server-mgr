@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
 import { runMigrations } from './database/migrate'
 import { initializeAutoUpdater } from './services/auto-updater'
+import { hasRunningServers, stopAllServers } from './services/server-manager'
 import { isSafeExternalUrl } from '../shared/utils/url'
 import log from './utils/logger'
 
@@ -107,4 +108,20 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+// Servers are child processes of the app: quitting without stopping them would
+// leave them running with no console attached, or cut them off mid-save. So
+// hold the quit until every server has shut down.
+let serversStopped = false
+app.on('before-quit', (event) => {
+  if (serversStopped || !hasRunningServers()) return
+  event.preventDefault()
+  log.info('[App] Quit requested with servers running — stopping them first')
+  void stopAllServers()
+    .catch((err) => log.error('[App] Failed to stop servers before quitting:', err))
+    .finally(() => {
+      serversStopped = true
+      app.quit()
+    })
 })

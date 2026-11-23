@@ -13,6 +13,11 @@ Environment=MSMD_ADDR=:8443
 ExecStart=/usr/local/bin/msmd
 Restart=on-failure
 RestartSec=5
+# On stop, signal only msmd: it tells every server to save and exit, and kills
+# the ones that are still running after MSMD_STOP_GRACE (default 2m). Keep
+# TimeoutStopSec comfortably above that, or systemd kills the servers first.
+KillMode=mixed
+TimeoutStopSec=180
 
 # Hardening
 NoNewPrivileges=true

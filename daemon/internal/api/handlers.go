@@ -151,7 +151,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
-	if err := s.mgr.Stop(r.PathValue("id")); err != nil {
+	if err := s.mgr.RequestStop(r.PathValue("id")); err != nil {
 		writeStoreError(w, err)
 		return
 	}

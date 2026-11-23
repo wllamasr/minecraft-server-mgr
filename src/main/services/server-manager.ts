@@ -14,6 +14,7 @@ import { installModLoader } from './mod-loader-installer'
 import { downloadServerSoftware } from './server-software'
 import { fetchJson } from '../utils/http'
 import { verifyFileChecksum } from '../utils/checksum'
+import { stopProcess } from '../utils/graceful-stop'
 import { applyModpack } from './modpack-manager'
 import log from '../utils/logger'
 import { IPC_EVENTS } from '../../shared/constants'
@@ -28,6 +29,8 @@ import type { ServerInstance, ServerWithStatus, ServerStatus, CreateServerInput,
 interface RunningServer {
   process: ChildProcess
   status: ServerStatus
+  /** Set while a stop is in progress, so repeated stop requests share it. */
+  stopping?: Promise<void>
 }
 
 const runningServers = new Map<string, RunningServer>()
@@ -43,6 +46,16 @@ const restartHistory = new Map<string, number[]>()
 const MAX_RESTARTS = 3
 const RESTART_WINDOW_MS = 60_000
 const RESTART_DELAY_MS = 5_000
+// Pending crash auto-restarts, so a stop, delete or app shutdown can cancel them.
+const restartTimers = new Map<string, NodeJS.Timeout>()
+
+// How long a server gets to save its world after `stop` before it is killed.
+// A large world can take well over the 30 s this used to be.
+const STOP_GRACE_OVERRIDE_MS = Number(process.env['MSM_STOP_GRACE_MS'])
+const STOP_GRACE_MS = STOP_GRACE_OVERRIDE_MS >= 1000 ? STOP_GRACE_OVERRIDE_MS : 120_000
+
+// Set once the app is quitting: nothing may be started or restarted any more.
+let shuttingDown = false
 
 // ─── Mojang version manifest ───────────────────────────────
 const VERSION_MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json'
@@ -233,6 +246,8 @@ async function provisionServer(
 }
 
 export function startServer(serverId: string): void {
+  if (shuttingDown) throw new Error('The app is shutting down')
+  cancelAutoRestart(serverId)
   if (runningServers.has(serverId)) {
     throw new Error('Server is already running')
   }
@@ -312,7 +327,11 @@ export function startServer(serverId: string): void {
   const childProcess = spawn(command, args, {
     cwd: serverDir,
     env,
-    stdio: ['pipe', 'pipe', 'pipe']
+    stdio: ['pipe', 'pipe', 'pipe'],
+    // On POSIX the server leads its own process group, so a forced stop can
+    // kill the whole group (run.sh and the JVM it starts).
+    detached: process.platform !== 'win32',
+    windowsHide: true
   })
 
   const running: RunningServer = {
@@ -337,11 +356,13 @@ export function startServer(serverId: string): void {
     detachConsole(serverId)
     stopTelemetry(serverId)
 
-    const crashed = code !== 0
+    // A stop we asked for is never a crash, even when the server had to be
+    // killed or exits with a non-zero code on its way out.
+    const crashed = code !== 0 && !wasStopping
     broadcastStatus(serverId, crashed ? 'crashed' : 'stopped')
 
     // Auto-restart on crash (not on an intentional stop) when enabled.
-    if (crashed && !wasStopping && server.autoStart) {
+    if (crashed && !shuttingDown && server.autoStart) {
       scheduleAutoRestart(serverId, server.name)
     } else {
       restartHistory.delete(serverId)
@@ -357,34 +378,71 @@ export function startServer(serverId: string): void {
   })
 }
 
-export async function stopServer(serverId: string): Promise<void> {
+/**
+ * Stop a server: ask it to shut down, give it time to save, and only kill it
+ * (with everything it started) when it does not exit on its own. Resolves once
+ * the process is gone, so the world is safe to start again or delete.
+ */
+export function stopServer(serverId: string): Promise<void> {
+  cancelAutoRestart(serverId)
+
   const running = runningServers.get(serverId)
   if (!running) {
-    throw new Error('Server is not running')
+    return Promise.reject(new Error('Server is not running'))
   }
+  if (running.stopping) return running.stopping
 
-  broadcastStatus(serverId, 'stopping')
   running.status = 'stopping'
+  broadcastStatus(serverId, 'stopping')
 
-  // Send graceful stop command
-  consoleSendCommand(serverId, 'stop')
-
-  // Wait up to 30 seconds, then force kill
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      log.warn(`[ServerManager] Force killing server ${serverId}`)
-      running.process.kill('SIGKILL')
-      resolve()
-    }, 30000)
-
-    running.process.on('exit', () => {
-      clearTimeout(timeout)
-      resolve()
-    })
+  running.stopping = stopProcess(running.process, {
+    requestStop: () => {
+      consoleSendCommand(serverId, 'stop')
+    },
+    timeoutMs: STOP_GRACE_MS,
+    onForce: () => {
+      log.warn(`[ServerManager] Server ${serverId} did not stop within ${STOP_GRACE_MS / 1000}s — killing it`)
+      pushLog(
+        serverId,
+        `Server did not stop within ${STOP_GRACE_MS / 1000}s — killing the process. Recent changes may not have been saved.`,
+        'WARN'
+      )
+    }
+  }).then(() => {
+    const child = running.process
+    if (child.exitCode === null && child.signalCode === null && runningServers.get(serverId) === running) {
+      // Even the kill had no effect. Allow another stop attempt later.
+      log.error(`[ServerManager] Server ${serverId} could not be killed`)
+      running.stopping = undefined
+    }
   })
+
+  return running.stopping
+}
+
+/** True while at least one server process is alive. */
+export function hasRunningServers(): boolean {
+  return runningServers.size > 0
+}
+
+/**
+ * Stop every running server and refuse to start new ones. Called when the app
+ * quits, so no server is left running without a console to control it.
+ */
+export async function stopAllServers(): Promise<void> {
+  shuttingDown = true
+  for (const serverId of [...restartTimers.keys()]) cancelAutoRestart(serverId)
+
+  const ids = [...runningServers.keys()]
+  if (ids.length === 0) return
+  log.info(`[ServerManager] Stopping ${ids.length} running server(s) before quitting`)
+  await Promise.allSettled(ids.map((id) => stopServer(id)))
 }
 
 export async function deleteServer(serverId: string): Promise<void> {
+  cancelAutoRestart(serverId)
+  restartHistory.delete(serverId)
+
   // Stop if running
   if (runningServers.has(serverId)) {
     await stopServer(serverId)
@@ -422,6 +480,13 @@ function getServerStatus(serverId: string): ServerStatus {
   return 'stopped'
 }
 
+function cancelAutoRestart(serverId: string): void {
+  const timer = restartTimers.get(serverId)
+  if (!timer) return
+  clearTimeout(timer)
+  restartTimers.delete(serverId)
+}
+
 function scheduleAutoRestart(serverId: string, name: string): void {
   const now = Date.now()
   const recent = (restartHistory.get(serverId) || []).filter((t) => now - t < RESTART_WINDOW_MS)
@@ -441,8 +506,10 @@ function scheduleAutoRestart(serverId: string, name: string): void {
 
   pushLog(serverId, `Server crashed — auto-restarting in ${RESTART_DELAY_MS / 1000}s...`, 'WARN')
 
-  setTimeout(() => {
-    if (runningServers.has(serverId)) return
+  cancelAutoRestart(serverId)
+  const timer = setTimeout(() => {
+    restartTimers.delete(serverId)
+    if (shuttingDown || runningServers.has(serverId)) return
     try {
       startServer(serverId)
     } catch (err) {
@@ -450,6 +517,7 @@ function scheduleAutoRestart(serverId: string, name: string): void {
       pushLog(serverId, `Auto-restart failed: ${message}`, 'ERROR')
     }
   }, RESTART_DELAY_MS)
+  restartTimers.set(serverId, timer)
 }
 
 function broadcastStatus(serverId: string, status: ServerStatus): void {

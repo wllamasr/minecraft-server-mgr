@@ -21,7 +21,7 @@ newer channels are still raw strings (noted below) and are good first cleanup ca
 | `getServer(id)`                | `server:get`      | `string`              | `ServerWithStatus \| null`   |
 | `createServer(input)`          | `server:create`   | `CreateServerInput`   | `ServerInstance`             |
 | `startServer(id)`              | `server:start`    | `string`              | `void`                       |
-| `stopServer(id)`               | `server:stop`     | `string`              | `void` (graceful, 30s kill)  |
+| `stopServer(id)`               | `server:stop`     | `string`              | `void` (graceful; kill after 2 min; resolves once exited) |
 | `deleteServer(id)`             | `server:delete`   | `string`              | `void`                       |
 
 `createServer` downloads the server jar (vanilla from Mojang, or the complete Paper/Purpur/Folia

@@ -6,14 +6,16 @@
 # Requires: go, curl. Exits non-zero on the first failed check.
 #
 # Set MSMD_SMOKE_LIVE=1 to also provision and boot a real Paper server (needs
-# network access; not run in CI).
+# network access; not run in CI). Set MSMD_SMOKE_BIN to test an msmd binary
+# that is already built instead of building one (then go is not needed).
 set -eu
 
 PORT="${MSMD_SMOKE_PORT:-18443}"
 BASE="https://127.0.0.1:$PORT"
 WORK="$(mktemp -d)"
 DATA="$WORK/data"
-BIN="$WORK/msmd$(go env GOEXE)"
+BIN="$WORK/msmd"
+[ -n "${MSMD_SMOKE_BIN:-}" ] || BIN="$WORK/msmd$(go env GOEXE)"
 LOG="$WORK/msmd.log"
 PID=""
 
@@ -57,8 +59,13 @@ expect_contains() {
   esac
 }
 
-echo "== build"
-CGO_ENABLED=0 go build -o "$BIN" ./cmd/msmd
+if [ -n "${MSMD_SMOKE_BIN:-}" ]; then
+  echo "== using $MSMD_SMOKE_BIN"
+  BIN="$MSMD_SMOKE_BIN"
+else
+  echo "== build"
+  CGO_ENABLED=0 go build -o "$BIN" ./cmd/msmd
+fi
 
 echo "== start"
 "$BIN" -data "$DATA" -addr "127.0.0.1:$PORT" >"$LOG" 2>&1 &
@@ -179,6 +186,87 @@ PLAIN="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/v1/healt
 case "$PLAIN" in
   2*) fail "daemon answered plain HTTP with $PLAIN" ;;
   *) echo "ok   plain HTTP is not served (got ${PLAIN:-no response})" ;;
+esac
+
+echo "== shutdown"
+# Stopping msmd must stop its servers first: each one is told to save and exit,
+# and only the ones that ignore that are killed. Git Bash has no real SIGTERM
+# (kill ends the process outright), so this part runs on Linux and macOS only.
+case "$(uname -s)" in
+  MINGW* | MSYS* | CYGWIN*)
+    echo "skip shutdown checks (no SIGTERM on this platform)"
+    ;;
+  *)
+    kill -TERM "$PID"
+    wait "$PID" || fail "idle daemon did not exit cleanly on SIGTERM"
+    PID=""
+    echo "ok   idle daemon exits cleanly on SIGTERM"
+
+    # Two stand-ins for a Minecraft server, started through a fake java: one
+    # saves and exits on "stop", the other ignores everything.
+    FAKEJAVA="$WORK/fakejava"
+    cat >"$FAKEJAVA" <<'FAKE'
+#!/bin/sh
+echo $$ >pid
+echo "Fake server up"
+if [ -f stubborn ]; then
+  trap '' TERM INT
+  while :; do sleep 1; done
+fi
+while read -r line; do
+  if [ "$line" = "stop" ]; then
+    : >saved
+    exit 0
+  fi
+done
+FAKE
+    chmod +x "$FAKEJAVA"
+    GOOD="00000000000000000000000000000001"
+    BAD="00000000000000000000000000000002"
+    mkdir -p "$WORK/good" "$WORK/bad"
+    : >"$WORK/good/server.jar"
+    : >"$WORK/bad/server.jar"
+    : >"$WORK/bad/stubborn"
+    NOW="2026-01-01T00:00:00Z"
+    cat >"$DATA/servers.json" <<SEED
+[
+  {"id":"$GOOD","name":"good","dir":"$WORK/good","minecraftVersion":"1.21.4","port":25565,"minRam":"1G","maxRam":"1G","autoStart":true,"createdAt":"$NOW","updatedAt":"$NOW"},
+  {"id":"$BAD","name":"bad","dir":"$WORK/bad","minecraftVersion":"1.21.4","port":25566,"minRam":"1G","maxRam":"1G","autoStart":true,"createdAt":"$NOW","updatedAt":"$NOW"}
+]
+SEED
+
+    MSMD_JAVA="$FAKEJAVA" MSMD_STOP_GRACE=3s "$BIN" -data "$DATA" -addr "127.0.0.1:$PORT" >>"$LOG" 2>&1 &
+    PID=$!
+    i=0
+    until curl -sk "$BASE/v1/health" >/dev/null 2>&1; do
+      i=$((i + 1))
+      [ "$i" -gt 50 ] && fail "daemon did not come back up"
+      sleep 0.2
+    done
+    for sid in "$GOOD" "$BAD"; do
+      expect_status 202 "start fake server $sid" POST "/v1/servers/$sid/start" -H "$AUTH"
+    done
+    i=0
+    until [ -s "$WORK/good/pid" ] && [ -s "$WORK/bad/pid" ]; do
+      i=$((i + 1))
+      [ "$i" -gt 50 ] && fail "fake servers did not start"
+      sleep 0.2
+    done
+    GOOD_PID="$(cat "$WORK/good/pid")"
+    BAD_PID="$(cat "$WORK/bad/pid")"
+
+    kill -TERM "$PID"
+    wait "$PID" || fail "daemon did not exit cleanly on SIGTERM with servers running"
+    PID=""
+    [ -f "$WORK/good/saved" ] || fail "the server that obeys stop was not given the chance to save"
+    echo "ok   a running server is asked to stop and saves before msmd exits"
+    if kill -0 "$GOOD_PID" 2>/dev/null || kill -0 "$BAD_PID" 2>/dev/null; then
+      kill -9 "$GOOD_PID" "$BAD_PID" 2>/dev/null || true
+      fail "a server process outlived msmd"
+    fi
+    echo "ok   no server process outlives msmd (the one ignoring stop was killed)"
+    grep -q "stopping 2 running server" "$LOG" || fail "shutdown did not report the servers it stopped"
+    ;;
 esac
 
 echo "SMOKE_OK"
