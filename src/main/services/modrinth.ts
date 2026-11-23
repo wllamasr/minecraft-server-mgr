@@ -2,6 +2,11 @@ import { app } from 'electron'
 import type { ModSearchOptions, ModSearchResponse, UnifiedMod, UnifiedModVersion } from '../../shared/types/mod.types'
 import log from '../utils/logger'
 
+/** Modrinth category tags that name a loader/platform rather than a content category. */
+const MODRINTH_LOADER_TAGS = ['fabric', 'forge', 'quilt', 'neoforge', 'paper', 'purpur', 'folia', 'spigot', 'bukkit']
+
+import { isPluginPlatform, modrinthCompatibleLoaders } from '../../shared/constants'
+
 const API_BASE = 'https://api.modrinth.com/v2'
 
 /** Use a compliant User-Agent as requested by Modrinth docs */
@@ -88,10 +93,13 @@ async function runSearch(
   // Facets for filtering by loader and game version
   const facets: string[][] = []
 
-  facets.push([`project_type:${projectType}`])
+  // Modrinth indexes server plugins under their own project type.
+  const type = projectType === 'mod' && isPluginPlatform(options.loader) ? 'plugin' : projectType
+  facets.push([`project_type:${type}`])
 
   if (options.loader) {
-    facets.push([`categories:${options.loader}`])
+    // One facet group is an OR: any compatible loader tag matches.
+    facets.push(modrinthCompatibleLoaders(options.loader).map((l) => `categories:${l}`))
   }
   if (options.gameVersion) {
     facets.push([`versions:${options.gameVersion}`])
@@ -114,9 +122,9 @@ async function runSearch(
     author: hit.author,
     iconUrl: hit.icon_url,
     downloads: hit.downloads,
-    loaders: hit.categories.filter((c) => ['fabric', 'forge', 'quilt', 'neoforge'].includes(c)),
+    loaders: hit.categories.filter((c) => MODRINTH_LOADER_TAGS.includes(c)),
     gameVersions: hit.versions,
-    categories: hit.categories.filter((c) => !['fabric', 'forge', 'quilt', 'neoforge'].includes(c)),
+    categories: hit.categories.filter((c) => !MODRINTH_LOADER_TAGS.includes(c)),
     dateCreated: hit.date_created,
     dateModified: hit.date_modified,
     source: 'modrinth'
@@ -137,9 +145,9 @@ export async function getMod(projectId: string): Promise<UnifiedMod & { descript
     author: 'Unknown', // Modrinth project endpoint doesn't return author directly without expanding
     iconUrl: data.icon_url,
     downloads: data.downloads,
-    loaders: data.categories.filter((c) => ['fabric', 'forge', 'quilt', 'neoforge'].includes(c)),
+    loaders: data.categories.filter((c) => MODRINTH_LOADER_TAGS.includes(c)),
     gameVersions: [], // The project endpoint doesn't list all game versions easily, rely on version endpoint
-    categories: data.categories.filter((c) => !['fabric', 'forge', 'quilt', 'neoforge'].includes(c)),
+    categories: data.categories.filter((c) => !MODRINTH_LOADER_TAGS.includes(c)),
     dateCreated: data.published,
     dateModified: data.updated,
     source: 'modrinth',
@@ -154,7 +162,7 @@ export async function getModVersions(
 ): Promise<UnifiedModVersion[]> {
   const params = new URLSearchParams()
   if (gameVersion) params.append('game_versions', JSON.stringify([gameVersion]))
-  if (loader) params.append('loaders', JSON.stringify([loader]))
+  if (loader) params.append('loaders', JSON.stringify(modrinthCompatibleLoaders(loader)))
 
   const url = `${API_BASE}/project/${projectId}/version?${params.toString()}`
   const data = await fetchJson<ModrinthVersion[]>(url)

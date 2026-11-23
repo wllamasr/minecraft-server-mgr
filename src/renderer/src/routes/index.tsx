@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { useState, useEffect, useRef } from 'react'
 import type { ServerWithStatus, ServerLogEntry } from '@shared/types'
+import { engineLabel } from '@shared/constants'
 
 export const Route = createFileRoute('/')({
   component: DashboardPage
@@ -137,7 +138,7 @@ function DashboardPage() {
                           <Box w={12} h={12} bg={server.status === 'running' ? 'emerald.4' : 'dark.3'} style={{ borderRadius: 2 }} />
                           <Box>
                             <Text size="sm" fw={700}>{server.name}</Text>
-                            <Text size="xs" c="dark.2">{server.minecraftVersion} | {server.modLoader || 'Vanilla'}</Text>
+                            <Text size="xs" c="dark.2">{server.minecraftVersion} | {engineLabel(server.modLoader)}</Text>
                           </Box>
                        </Group>
                      </Table.Td>

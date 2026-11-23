@@ -133,6 +133,18 @@ These are hard requirements; reviewers will request changes if they are not met.
   temporary profile (`--user-data-dir`), so they never touch your real servers or database.
   They need no browser download. Add a test there when you add a page or change the preload
   bridge. Keep them independent of the network.
+- **Live end-to-end test** (`e2e/live/paper-server.spec.ts`) creates a real Paper server through
+  the wizard, boots it with the optimized JVM flags, installs a plugin from Modrinth, and stops
+  it; it also provisions a Purpur server and checks that every engine lists its versions. It needs network access and Java 21, is
+  skipped unless `MSM_E2E_LIVE=1`, and never runs in CI. Run it with `npm run build`, then
+  (PowerShell):
+
+  ```powershell
+  $env:MSM_E2E_LIVE = '1'; npx playwright test e2e/live
+  ```
+
+  Optional environment variables: `MSM_E2E_LIVE_MC` (Minecraft version, default `1.21.11`) and
+  `MSM_E2E_LIVE_PORT` (server port, default `25599`; the next port is used too).
 - **Daemon end-to-end checks** live in `daemon/scripts/smoke.sh`. Every check must assert
   (exit non-zero on failure), not just print.
 - Bug fixes should include a regression test whenever practical.

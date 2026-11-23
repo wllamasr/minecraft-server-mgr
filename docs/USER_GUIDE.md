@@ -12,8 +12,8 @@ server, and using its main features. For developer documentation see the
 4. [Starting and stopping](#4-starting-and-stopping)
 5. [The live console](#5-the-live-console)
 6. [Configuring `server.properties`](#6-configuring-serverproperties)
-7. [Mod loaders](#7-mod-loaders)
-8. [Mods and modpacks](#8-mods-and-modpacks)
+7. [Mod loaders and server engines](#7-mod-loaders-and-server-engines)
+8. [Mods, plugins, and modpacks](#8-mods-plugins-and-modpacks)
 9. [Resource usage](#9-resource-usage)
 10. [Java](#10-java)
 11. [Settings and data locations](#11-settings-and-data-locations)
@@ -27,9 +27,10 @@ server, and using its main features. For developer documentation see the
 
 - **Windows 10 or 11** (64-bit).
 - **Java**. Minecraft servers need a Java runtime:
-  - Minecraft **1.20.5 and newer**: Java **21**.
+  - Minecraft **26.x**: Java **25**.
+  - Minecraft **1.20.5 to 1.21.x**: Java **21**.
   - Minecraft **1.17 to 1.20.4**: Java **17**.
-  - Older releases: Java **8**.
+  - Minecraft **1.16.5 and older**: Java **8**.
 
   MSM detects installed JDKs automatically. If none is found it links you to
   [Adoptium](https://adoptium.net/), which offers free installers.
@@ -53,9 +54,12 @@ To run from source instead, see [CONTRIBUTING.md](../CONTRIBUTING.md#development
    - **Name**: letters, numbers, `-` and `_` are safest. Other characters are replaced with `_`
      for the folder name.
    - **Minecraft version**: pick from the list.
-   - **Mod loader** (optional): Forge, NeoForge, Fabric, or Quilt, plus a loader version. Leave it
-     empty for a vanilla server.
-   - **Port** (default `25565`), **min RAM** (default `1G`), **max RAM** (default `2G`).
+   - **Mod loader** (optional): Forge, NeoForge, Fabric, Quilt, Paper, Purpur, or Folia, plus a
+     loader version (for Paper, Purpur, and Folia, a build). Leave it empty for a vanilla server.
+     See [Mod loaders and server engines](#7-mod-loaders-and-server-engines).
+   - **Port** (default `25565`), **RAM** (the slider sets the maximum, `4G` by default; the minimum is half of it, up to
+     32 GB in the wizard).
+   - **Optimized JVM flags**: see [Running a large server](#running-a-large-server).
    - **MOTD** and **auto-restart**, if you want them.
 3. Confirm. The server appears immediately in the list with a *provisioning* status. MSM downloads
    the jar and installs the loader in the background; progress appears in the server console.
@@ -86,23 +90,51 @@ input controls. Save to write the file. Comments already in the file are preserv
 
 Changes take effect the next time the server starts. Restart a running server to apply them.
 
-## 7. Mod loaders
+## 7. Mod loaders and server engines
 
-| Loader    | Typical use                                           |
+| Engine    | Typical use                                           |
 | --------- | ----------------------------------------------------- |
 | Vanilla   | No mods. Pure Minecraft.                              |
 | Fabric    | Lightweight mods, quick to adopt new versions.        |
 | Quilt     | Fabric-compatible, with its own ecosystem.            |
 | Forge     | Large, long-established mod library.                  |
 | NeoForge  | Forge's modern successor for recent Minecraft versions. |
+| Paper     | Plugin platform aimed at large player counts.         |
+| Purpur    | Plugin platform aimed at large player counts, with extra options. |
+| Folia     | Plugin platform for very large player counts. Only runs plugins that explicitly support Folia. |
 
 Use the same loader that your mods target. A mod built for Forge will not load on Fabric.
 
-## 8. Mods and modpacks
+For Paper, Purpur, and Folia the Minecraft version list is fetched live from the project and
+shows release versions only. You then pick a **build**: the newest stable build is preselected,
+and non-stable builds are labelled "(experimental)" (Purpur has no release channels, so all of its builds count as stable). The build is a complete server jar saved as
+`server.jar`. MSM checks the download against the checksum the project publishes (SHA-256 for
+Paper and Folia, MD5 for Purpur, which only publishes MD5); if it does not match, the file is
+deleted and the server shows an *error* status. The vanilla jar is checked against Mojang's SHA-1.
+
+Paper, Purpur, and Folia are available for local servers only. Remote hosts (the `msmd` daemon)
+do not support them or the JVM profile yet; this is planned next.
+
+### Running a large server
+
+- Choose **Paper**. For very large player counts, choose **Folia** if all your plugins support it.
+- Turn on **Optimized JVM flags** (wizard step 3). It is on by default for Paper, Purpur, and
+  Folia. It applies Aikar's G1GC flags and starts the JVM with its initial heap equal to the maximum (`-Xms` = `-Xmx`), so the full
+  heap is reserved up front: the machine needs that much free RAM. It works with every engine.
+  The server **Overview** shows "JVM flags: Optimized (Aikar's flags)" or "Default".
+- Give the server enough RAM. The wizard slider goes up to 32 GB.
+- Put plugins in the server's `plugins/` folder, or install them from the **Plugin Browser**.
+
+## 8. Mods, plugins, and modpacks
 
 - The **Mods** page lets you search **Modrinth** and **CurseForge** and install mods onto a server.
   Browsing CurseForge requires a free API key: paste it in **Settings** (CurseForge API Key). Modrinth
   needs no key.
+- On Paper, Purpur, and Folia servers, add-ons are **plugins** and load from `plugins/` instead of
+  `mods/`. The server's "Mods" tab becomes "Plugins" and the browser becomes "Plugin Browser".
+  Plugins come from Modrinth only; CurseForge is not available for these servers. For Paper and
+  Purpur the search matches projects tagged paper, purpur, spigot, or bukkit; for Folia it matches
+  only projects tagged folia.
 - **Enable or disable** an installed mod with its switch. Disabled mods stay on disk but are not loaded.
 - **Remove** a mod to delete its file.
 - The **Modpacks** page deploys a modpack as a whole, which sets up the loader and the pack's mods in
@@ -150,7 +182,7 @@ project's GitHub releases.
 | ----------------------------------------- | ----------------------------------------------------------------------------- |
 | Server stays in *provisioning*            | Network connection. The console shows which download is stuck or failed.     |
 | Server goes straight to *crashed*         | The console. Usually a wrong Java version, or a mod that does not match the loader. |
-| "Java not found"                          | Install Java 21 (or 17/8 for older versions) and restart MSM.                 |
+| "Java not found"                          | Install the Java version listed in section 1 (25, 21, 17, or 8) and restart MSM.                 |
 | CurseForge search returns nothing or fails | Add your CurseForge API key in Settings.                                     |
 | Players cannot connect                    | Port forwarding and the Windows firewall. The port must be open in both.     |
 | Server is slow or lags                    | Check CPU and memory on the server page. Raise RAM or reduce mods.           |

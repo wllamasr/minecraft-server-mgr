@@ -1,5 +1,7 @@
 import type { ModLoaderType } from '../constants/mod-loaders'
 import type { ModSource } from './mod.types'
+import type { JvmProfile } from '../utils/jvm'
+export type { JvmProfile }
 export type { ModLoaderType }
 
 /** Reference to the modpack a server was deployed from (for updates). */
@@ -38,6 +40,8 @@ export interface ServerInstance {
   modpackProjectId: string | null
   modpackVersionId: string | null
   modpackName: string | null
+  /** JVM argument profile used to launch the server. */
+  jvmProfile: JvmProfile
 }
 
 export interface CreateServerInput {
@@ -52,6 +56,8 @@ export interface CreateServerInput {
   motd?: string
   /** Automatically restart the server if it crashes. */
   autoStart?: boolean
+  /** JVM argument profile; `aikar` applies tuned G1GC flags for busy servers. Defaults to `default`. */
+  jvmProfile?: JvmProfile
   /** When set, provision the server from this Modrinth/CurseForge modpack. */
   modpack?: ModpackRef
 }

@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useMemo } from 'react'
 import type { ServerWithStatus, ServerLogEntry } from '@shared/types'
+import { engineLabel } from '@shared/constants'
 
 export const Route = createFileRoute('/servers/')({
   component: ServerListPage
@@ -192,7 +193,7 @@ function ServerListPage() {
 
                   <Box ta="center">
                      <Text size="xs" fw={800} c="dark.2" tt="uppercase">Engine</Text>
-                     <Text fw={900} size="md">{server.modLoader || 'Vanilla'} <Text component="span" c="emerald.4" size="sm">{server.minecraftVersion}</Text></Text>
+                     <Text fw={900} size="md">{engineLabel(server.modLoader)} <Text component="span" c="emerald.4" size="sm">{server.minecraftVersion}</Text></Text>
                   </Box>
                </Group>
 

@@ -24,8 +24,12 @@ newer channels are still raw strings (noted below) and are good first cleanup ca
 | `stopServer(id)`               | `server:stop`     | `string`              | `void` (graceful, 30s kill)  |
 | `deleteServer(id)`             | `server:delete`   | `string`              | `void`                       |
 
-`createServer` downloads the vanilla jar from Mojang, writes `server.properties` + `eula.txt`,
-and installs the mod loader if one was requested.
+`createServer` downloads the server jar (vanilla from Mojang, or the complete Paper/Purpur/Folia
+build), verifies its checksum, writes `server.properties` + `eula.txt`, and installs the mod
+loader if one was requested. `CreateServerInput` has an optional `jvmProfile`
+(`'default' | 'aikar'`), and `ServerInstance` includes `jvmProfile`. The main process validates the
+input: name, version, RAM format (`4G` or `4096M`), min RAM not above max RAM, known engine, known
+JVM profile, and a build number for plugin platforms.
 
 ## Console
 
@@ -63,7 +67,8 @@ renderer-facing "install loader" channel: the renderer never passes a filesystem
 
 | `window.api` method                                   | Channel                        | Notes                          |
 | ----------------------------------------------------- | ------------------------------ | ------------------------------ |
-| `getModLoaderVersions(loader, mcVersion)`             | `modloader:get-versions`       | `{ version, stable }[]`        |
+| `getModLoaderVersions(loader, mcVersion)`             | `modloader:get-versions`       | `{ version, stable }[]`; also accepts `paper`, `purpur`, `folia` (build numbers) |
+| `getServerSoftwareVersions(platform)`                 | `server-software:get-versions` | `string[]`; `platform` is `'paper' \| 'purpur' \| 'folia'` |
 | `searchMods(options)`                                 | `mod-manager:search` ¹         | `ModSearchResponse`            |
 | `getMod(source, id)`                                  | `mod-manager:get` ¹            | `UnifiedMod` + `descriptionHtml` |
 | `getModVersions(source, id, gameVersion?, loader?)`   | `mod-manager:get-versions` ¹   | `UnifiedModVersion[]`          |
@@ -73,6 +78,10 @@ renderer-facing "install loader" channel: the renderer never passes a filesystem
 | `toggleMod(id, modDbId, enable)`                      | `mod-manager:toggle` ¹         | `void`                         |
 
 ¹ raw-string channel. `source` is `'modrinth' | 'curseforge'`.
+
+`getServerSoftwareVersions` returns the Minecraft versions the platform has builds for, newest
+first, and rejects for an unknown platform. For plugin platforms, `installMod` and the related
+calls use the server's `plugins/` folder, and only `modrinth` is accepted.
 
 ## App & window
 

@@ -11,10 +11,16 @@ import { findBestJava } from './java-detector'
 import { attachConsole, detachConsole, sendCommand as consoleSendCommand, pushLog } from './console-manager'
 import { startTelemetry, stopTelemetry } from './telemetry-manager'
 import { installModLoader } from './mod-loader-installer'
+import { downloadServerSoftware } from './server-software'
+import { fetchJson } from '../utils/http'
+import { verifyFileChecksum } from '../utils/checksum'
 import { applyModpack } from './modpack-manager'
 import log from '../utils/logger'
 import { IPC_EVENTS } from '../../shared/constants'
-import { DEFAULTS } from '../../shared/constants'
+import { DEFAULTS, MOD_LOADERS, isPluginPlatform, engineLabel } from '../../shared/constants'
+import { buildJvmArgs, isJvmProfile, isValidRam, ramToMb } from '../../shared/utils/jvm'
+import { isReleaseVersion } from '../../shared/utils/minecraft-version'
+import { isValidBuildId } from '../../shared/utils/server-software'
 import { formatProgress } from '../../shared/utils/format'
 import type { ServerInstance, ServerWithStatus, ServerStatus, CreateServerInput, ModSource } from '../../shared/types'
 
@@ -61,6 +67,7 @@ export function listServers(): ServerWithStatus[] {
     ...row,
     modLoader: row.modLoader as ServerInstance['modLoader'],
     modpackSource: row.modpackSource as ModSource | null,
+    jvmProfile: isJvmProfile(row.jvmProfile) ? row.jvmProfile : 'default',
     status: getServerStatus(row.id),
     pid: runningServers.get(row.id)?.process.pid
   }))
@@ -75,6 +82,7 @@ export function getServer(serverId: string): ServerWithStatus | null {
     ...row,
     modLoader: row.modLoader as ServerInstance['modLoader'],
     modpackSource: row.modpackSource as ModSource | null,
+    jvmProfile: isJvmProfile(row.jvmProfile) ? row.jvmProfile : 'default',
     status: getServerStatus(row.id),
     pid: runningServers.get(row.id)?.process.pid
   }
@@ -94,6 +102,8 @@ export function getRunningProcess(serverId: string): ChildProcess | null {
  * server and watch the console rather than awaiting completion.
  */
 export function createServer(input: CreateServerInput): ServerInstance {
+  validateCreateInput(input)
+
   const db = getDatabase()
   const id = uuid()
   const serverDir = getServerDir(input.name)
@@ -123,7 +133,8 @@ export function createServer(input: CreateServerInput): ServerInstance {
     modpackSource: input.modpack?.source ?? null,
     modpackProjectId: input.modpack?.projectId ?? null,
     modpackVersionId: input.modpack?.versionId ?? null,
-    modpackName: input.modpack?.name ?? null
+    modpackName: input.modpack?.name ?? null,
+    jvmProfile: input.jvmProfile ?? 'default'
   }
 
   db.insert(schema.servers).values(server).run()
@@ -148,18 +159,36 @@ async function provisionServer(
   try {
     pushLog(serverId, `Provisioning server "${input.name}"...`, 'INFO')
 
-    // 1. Download the vanilla server jar (progress is streamed, throttled to
-    //    every 10% so the console is not flooded with per-chunk updates).
-    pushLog(serverId, `Downloading Minecraft ${input.minecraftVersion} server jar...`, 'INFO')
+    // 1. Download the server jar (progress is streamed, throttled to every 10%
+    //    so the console is not flooded with per-chunk updates). Plugin platforms
+    //    (Paper, Purpur, Folia) ship a complete server jar that takes the place
+    //    of the vanilla one; everything else starts from the vanilla jar.
     const serverJarPath = join(serverDir, 'server.jar')
     let lastLoggedStep = -1
-    await downloadVanillaServer(input.minecraftVersion, serverJarPath, (transferred, total) => {
+    const logProgress = (transferred: number, total: number): void => {
       const step = total > 0 ? Math.floor((transferred / total) * 10) : lastLoggedStep + 1
       if (step > lastLoggedStep) {
         lastLoggedStep = step
         pushLog(serverId, `  server.jar  ${formatProgress(transferred, total)}`, 'INFO')
       }
-    })
+    }
+
+    const platform = !input.modpack && isPluginPlatform(input.modLoader) ? input.modLoader : null
+    if (platform) {
+      const build = input.modLoaderVersion as string
+      pushLog(
+        serverId,
+        `Downloading ${engineLabel(platform)} ${input.minecraftVersion} build ${build}...`,
+        'INFO'
+      )
+      const download = await downloadServerSoftware(platform, input.minecraftVersion, build, serverJarPath, (p) =>
+        logProgress(p.transferred, p.total)
+      )
+      pushLog(serverId, `Verified ${download.fileName} (${download.checksum.algorithm} checksum OK).`, 'INFO')
+    } else {
+      pushLog(serverId, `Downloading Minecraft ${input.minecraftVersion} server jar...`, 'INFO')
+      await downloadVanillaServer(input.minecraftVersion, serverJarPath, logProgress)
+    }
 
     // 2. Generate server.properties and accept the EULA.
     pushLog(serverId, 'Writing server.properties and accepting the EULA...', 'INFO')
@@ -186,7 +215,7 @@ async function provisionServer(
         })
         .where(eq(schema.servers.id, serverId))
         .run()
-    } else if (input.modLoader && input.modLoaderVersion) {
+    } else if (input.modLoader && input.modLoaderVersion && !isPluginPlatform(input.modLoader)) {
       pushLog(serverId, `Installing ${input.modLoader} ${input.modLoaderVersion}...`, 'INFO')
       await installModLoader(input.modLoader, input.modLoaderVersion, input.minecraftVersion, serverDir)
     }
@@ -231,14 +260,18 @@ export function startServer(serverId: string): void {
     }
   }
 
+  // Older records can hold a minimum the JVM profile builder rejects (the wizard
+  // used to store "0G" for a 1 GB server); fall back to the maximum for those.
+  const minRamUsable =
+    isValidRam(server.minRam) && isValidRam(server.maxRam) && ramToMb(server.minRam) <= ramToMb(server.maxRam)
+  const jvmArgs = buildJvmArgs({
+    minRam: minRamUsable ? server.minRam : server.maxRam,
+    maxRam: server.maxRam,
+    profile: isJvmProfile(server.jvmProfile) ? server.jvmProfile : 'default'
+  })
+
   let command = javaPath
-  let args = [
-    `-Xms${server.minRam}`,
-    `-Xmx${server.maxRam}`,
-    '-jar',
-    'server.jar',
-    'nogui'
-  ]
+  let args = [...jvmArgs, '-jar', 'server.jar', 'nogui']
 
   // Specialized startup logic for mod loaders
   if (server.modLoader === 'forge' || server.modLoader === 'neoforge') {
@@ -249,10 +282,9 @@ export function startServer(serverId: string): void {
     if (existsSync(scriptPath)) {
       log.info(`[ServerManager] Detected ${server.modLoader} script: ${scriptName}`)
       
-      // Update user_jvm_args.txt for RAM
+      // The run script reads JVM arguments (heap + profile flags) from user_jvm_args.txt
       const jvmArgsPath = join(serverDir, 'user_jvm_args.txt')
-      const ramArgs = `-Xms${server.minRam}\n-Xmx${server.maxRam}\n`
-      writeFileSync(jvmArgsPath, ramArgs)
+      writeFileSync(jvmArgsPath, jvmArgs.join('\n') + '\n')
       
       if (isWin) {
         command = 'cmd.exe'
@@ -265,13 +297,7 @@ export function startServer(serverId: string): void {
   } else if (server.modLoader === 'fabric' || server.modLoader === 'quilt') {
     const loaderJar = server.modLoader === 'fabric' ? 'fabric-server-launch.jar' : 'quilt-server-launch.jar'
     if (existsSync(join(serverDir, loaderJar))) {
-      args = [
-        `-Xms${server.minRam}`, 
-        `-Xmx${server.maxRam}`, 
-        '-jar', 
-        loaderJar, 
-        'nogui'
-      ]
+      args = [...jvmArgs, '-jar', loaderJar, 'nogui']
     }
   }
 
@@ -459,27 +485,51 @@ async function downloadVanillaServer(
   }
 
   await downloadFile(serverDownload.url, destPath, (p) => onProgress?.(p.transferred, p.total))
+  // Mojang publishes a SHA-1 for the jar; refuse a corrupted or tampered download.
+  if (serverDownload.sha1) {
+    await verifyFileChecksum(destPath, 'sha1', serverDownload.sha1)
+  }
 }
 
-function fetchJson(url: string): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const https = require('https')
-    https.get(url, (res: any) => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode}`))
-        return
-      }
-      let data = ''
-      res.on('data', (chunk: string) => (data += chunk))
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(data))
-        } catch (e) {
-          reject(e)
-        }
-      })
-    }).on('error', reject)
-  })
+/**
+ * Reject malformed creation input before anything touches the disk. These
+ * values end up in process arguments and download URLs, so they are checked
+ * here rather than trusted from the renderer.
+ */
+function validateCreateInput(input: CreateServerInput): void {
+  if (!input || typeof input.name !== 'string' || !input.name.trim()) {
+    throw new Error('A server name is required')
+  }
+  if (typeof input.minecraftVersion !== 'string' || !input.minecraftVersion.trim()) {
+    throw new Error('A Minecraft version is required')
+  }
+  if (input.minRam !== undefined && !isValidRam(input.minRam)) {
+    throw new Error(`Invalid minimum memory: ${String(input.minRam)}`)
+  }
+  if (input.maxRam !== undefined && !isValidRam(input.maxRam)) {
+    throw new Error(`Invalid maximum memory: ${String(input.maxRam)}`)
+  }
+  // Throws when the minimum exceeds the maximum.
+  if (input.minRam && input.maxRam) buildJvmArgs({ minRam: input.minRam, maxRam: input.maxRam })
+
+  if (input.jvmProfile !== undefined && !isJvmProfile(input.jvmProfile)) {
+    throw new Error(`Unknown JVM profile: ${String(input.jvmProfile)}`)
+  }
+  if (input.modLoader !== undefined && !MOD_LOADERS.some((l) => l.value === input.modLoader)) {
+    throw new Error(`Unknown server software: ${String(input.modLoader)}`)
+  }
+  // Loader versions are interpolated into download URLs and installer arguments.
+  if (input.modLoaderVersion !== undefined && !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$/.test(String(input.modLoaderVersion))) {
+    throw new Error(`Invalid engine version: ${String(input.modLoaderVersion)}`)
+  }
+  if (!input.modpack && isPluginPlatform(input.modLoader)) {
+    if (!isReleaseVersion(input.minecraftVersion)) {
+      throw new Error(`Invalid Minecraft version: ${input.minecraftVersion}`)
+    }
+    if (!isValidBuildId(input.modLoaderVersion)) {
+      throw new Error(`Select a ${engineLabel(input.modLoader)} build before creating the server`)
+    }
+  }
 }
 
 function generateDefaultProperties(input: CreateServerInput): string {

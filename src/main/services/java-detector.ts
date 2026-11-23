@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import log from '../utils/logger'
 import type { JavaInstallation } from '../../shared/types'
+import { getRequiredJavaMajor } from '../../shared/utils/minecraft-version'
 
 const COMMON_JAVA_PATHS_WIN = [
   'C:\\Program Files\\Java',
@@ -110,17 +111,7 @@ export function detectJavaInstallations(): JavaInstallation[] {
   return found
 }
 
-/**
- * Get the minimum Java major version required for a given Minecraft version.
- */
-export function getRequiredJavaMajor(mcVersion: string): number {
-  const parts = mcVersion.split('.').map(Number)
-  const minor = parts[1] || 0
-
-  if (minor >= 21) return 21
-  if (minor >= 17) return 17
-  return 8
-}
+export { getRequiredJavaMajor }
 
 /**
  * Find the best Java installation for a given Minecraft version.

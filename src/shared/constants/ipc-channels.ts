@@ -26,6 +26,7 @@ export const IPC_CHANNELS = {
 
   // Mod Loaders
   MODLOADER_GET_VERSIONS: 'modloader:get-versions',
+  SERVER_SOFTWARE_GET_VERSIONS: 'server-software:get-versions',
 
   // App
   APP_GET_VERSION: 'app:get-version',

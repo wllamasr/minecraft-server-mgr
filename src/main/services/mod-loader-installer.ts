@@ -3,6 +3,9 @@ import { existsSync, mkdirSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { downloadFile } from '../utils/download'
 import { findBestJava } from './java-detector'
+import { fetchJson, fetchText } from '../utils/http'
+import { getSoftwareBuilds } from './server-software'
+import { isPluginPlatform } from '../../shared/constants'
 import log from '../utils/logger'
 import type { ModLoaderType } from '../../shared/types/server.types'
 
@@ -29,6 +32,11 @@ export async function getLoaderVersions(
   loader: ModLoaderType,
   mcVersion: string
 ): Promise<LoaderVersion[]> {
+  // Plugin platforms (Paper, Purpur, Folia): the "loader version" is a build number.
+  if (isPluginPlatform(loader)) {
+    return getSoftwareBuilds(loader, mcVersion)
+  }
+
   switch (loader) {
     case 'fabric':
       return getFabricLoaderVersions()
@@ -122,6 +130,11 @@ export async function installModLoader(
   mcVersion: string,
   serverDir: string
 ): Promise<void> {
+  if (isPluginPlatform(loader)) {
+    // These ship as a complete server jar (see server-software.ts), not an installer.
+    throw new Error(`${loader} is installed by downloading its server jar, not by a loader installer`)
+  }
+
   log.info(`[ModLoader] Installing ${loader} ${loaderVersion} for MC ${mcVersion} in ${serverDir}`)
 
   switch (loader) {
@@ -282,44 +295,5 @@ function runJar(javaPath: string, jarPath: string, args: string[], cwd: string):
       proc.kill()
       reject(new Error('Installer timed out after 5 minutes'))
     }, 300000)
-  })
-}
-
-async function fetchJson(url: string): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const https = require('https')
-    const http = require('http')
-    const protocol = url.startsWith('https') ? https : http
-
-    protocol.get(url, (res: any) => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode} for ${url}`))
-        return
-      }
-      let data = ''
-      res.on('data', (chunk: string) => (data += chunk))
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)) }
-        catch (e) { reject(e) }
-      })
-    }).on('error', reject)
-  })
-}
-
-async function fetchText(url: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const https = require('https')
-    const http = require('http')
-    const protocol = url.startsWith('https') ? https : http
-
-    protocol.get(url, (res: any) => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode} for ${url}`))
-        return
-      }
-      let data = ''
-      res.on('data', (chunk: string) => (data += chunk))
-      res.on('end', () => resolve(data))
-    }).on('error', reject)
   })
 }

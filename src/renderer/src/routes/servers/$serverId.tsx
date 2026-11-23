@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
 import type { ServerWithStatus, ServerTelemetry } from '@shared/types'
+import { engineLabel, isPluginPlatform } from '@shared/constants'
 import { ServerMods } from '../../components/servers/ServerMods'
 import { ServerConsole } from '../../components/servers/ServerConsole'
 import { ServerPropertiesEditor } from '../../components/servers/ServerPropertiesEditor'
@@ -162,7 +163,7 @@ function ServerDetailPage() {
             Overview
           </Tabs.Tab>
           <Tabs.Tab value="mods" leftSection={<IconPackage size={14} />}>
-            Mods
+            {isPluginPlatform(server.modLoader) ? 'Plugins' : 'Mods'}
           </Tabs.Tab>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={14} />}>
             Settings
@@ -184,11 +185,15 @@ function ServerDetailPage() {
                   <Text size="sm">{server.minRam} – {server.maxRam}</Text>
                 </Group>
                 <Group justify="space-between">
-                  <Text size="sm" c="dimmed">Mod Loader</Text>
+                  <Text size="sm" c="dimmed">JVM flags</Text>
+                  <Text size="sm">{server.jvmProfile === 'aikar' ? "Optimized (Aikar's flags)" : 'Default'}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Engine</Text>
                   <Group gap="xs">
                     <Text size="sm" fw={server.modLoader ? 600 : 400}>
                       {server.modLoader
-                        ? `${server.modLoader.charAt(0).toUpperCase() + server.modLoader.slice(1)}`
+                        ? engineLabel(server.modLoader)
                         : 'Vanilla'}
                     </Text>
                     {server.modLoaderVersion && (

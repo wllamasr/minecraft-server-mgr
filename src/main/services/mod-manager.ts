@@ -9,14 +9,16 @@ import * as modrinth from './modrinth'
 import * as curseforge from './curseforge'
 import { eq, and } from 'drizzle-orm'
 import type { ModSearchOptions, ModSearchResponse, UnifiedMod, UnifiedModVersion, ModSource } from '../../shared/types'
+import { addonDirFor, isPluginPlatform, modrinthLoaderFor } from '../../shared/constants'
 import log from '../utils/logger'
 
 // ─── API Proxies ───────────────────────────────────────────
 
 export async function searchMods(options: ModSearchOptions): Promise<ModSearchResponse> {
   if (options.source === 'modrinth') {
-    return modrinth.searchMods(options)
+    return modrinth.searchMods({ ...options, loader: modrinthLoaderFor(options.loader) })
   } else {
+    assertNotPluginPlatformOnCurseForge(options.loader)
     return curseforge.searchMods(options)
   }
 }
@@ -44,9 +46,21 @@ export async function getModVersions(
   loader?: string
 ): Promise<UnifiedModVersion[]> {
   if (source === 'modrinth') {
-    return modrinth.getModVersions(id, gameVersion, loader)
+    return modrinth.getModVersions(id, gameVersion, modrinthLoaderFor(loader))
   } else {
+    assertNotPluginPlatformOnCurseForge(loader)
     return curseforge.getModVersions(id, gameVersion, loader)
+  }
+}
+
+/**
+ * CurseForge's mod search covers Forge/Fabric-style mods; its Bukkit plugins
+ * live in a separate catalog this app does not query. Refuse the combination
+ * so a Forge mod is never offered for (or installed on) a Paper-family server.
+ */
+function assertNotPluginPlatformOnCurseForge(loader: string | null | undefined): void {
+  if (isPluginPlatform(loader)) {
+    throw new Error('Plugins for Paper, Purpur and Folia are available from Modrinth. CurseForge is not supported for these servers.')
   }
 }
 
@@ -69,6 +83,8 @@ export async function installMod(
 
   log.info(`[ModManager] Installing ${source} mod ${projectId} (version ${versionId}) to server ${server.name}`)
 
+  if (source !== 'modrinth') assertNotPluginPlatformOnCurseForge(server.modLoader)
+
   const versions = await getModVersions(source, projectId)
   const version = versions.find((v) => v.id === versionId)
   if (!version) throw new Error('Version not found on remote')
@@ -79,8 +95,8 @@ export async function installMod(
 
   const modDetails = await getMod(source, projectId)
 
-  // Ensure mods directory exists
-  const modsDir = join(server.absolutePath, 'mods')
+  // Mods go to mods/, plugins (Paper family) to plugins/
+  const modsDir = join(server.absolutePath, addonDirFor(server.modLoader))
   if (!existsSync(modsDir)) {
     const { mkdirSync } = require('fs')
     mkdirSync(modsDir, { recursive: true })
@@ -121,7 +137,7 @@ export async function uninstallMod(serverId: string, modDbId: string): Promise<v
 
   // Try to remove from filesystem
   const actualFileName = mod.enabled ? mod.fileName : `${mod.fileName}.disabled`
-  const targetPath = join(server.absolutePath, 'mods', actualFileName)
+  const targetPath = join(server.absolutePath, addonDirFor(server.modLoader), actualFileName)
 
   if (existsSync(targetPath)) {
     try {
@@ -146,8 +162,8 @@ export async function toggleMod(serverId: string, modDbId: string, enable: boole
 
   if (mod.enabled === enable) return // No change needed
 
-  const modsDir = join(server.absolutePath, 'mods')
-  
+  const modsDir = join(server.absolutePath, addonDirFor(server.modLoader))
+
   const fromName = mod.enabled ? mod.fileName : `${mod.fileName}.disabled`
   const toName = enable ? mod.fileName : `${mod.fileName}.disabled`
 

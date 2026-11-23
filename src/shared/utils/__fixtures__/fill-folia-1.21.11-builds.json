@@ -1,0 +1,212 @@
+[
+ {
+  "id": 14,
+  "time": "2026-02-22T20:22:23Z",
+  "channel": "STABLE",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-14.jar",
+    "checksums": {
+     "sha256": "f52c408490a0225611e67907a3ca19f7e6da2c6bc899e715d5f46844e7103c39"
+    },
+    "size": 55082693,
+    "url": "https://fill-data.papermc.io/v1/objects/f52c408490a0225611e67907a3ca19f7e6da2c6bc899e715d5f46844e7103c39/folia-1.21.11-14.jar"
+   }
+  }
+ },
+ {
+  "id": 13,
+  "time": "2026-02-15T20:15:31Z",
+  "channel": "STABLE",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-13.jar",
+    "checksums": {
+     "sha256": "9b449d61d9d9024887f1a5c9c5bd68d5571a7e4053b2426ac783aa8c9530190f"
+    },
+    "size": 55080565,
+    "url": "https://fill-data.papermc.io/v1/objects/9b449d61d9d9024887f1a5c9c5bd68d5571a7e4053b2426ac783aa8c9530190f/folia-1.21.11-13.jar"
+   }
+  }
+ },
+ {
+  "id": 12,
+  "time": "2026-02-08T00:47:27Z",
+  "channel": "STABLE",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-12.jar",
+    "checksums": {
+     "sha256": "f017c9e544e85498ed983f723667ae3b87ba645d60e6182b6ded6db494ca0424"
+    },
+    "size": 55079382,
+    "url": "https://fill-data.papermc.io/v1/objects/f017c9e544e85498ed983f723667ae3b87ba645d60e6182b6ded6db494ca0424/folia-1.21.11-12.jar"
+   }
+  }
+ },
+ {
+  "id": 11,
+  "time": "2026-01-20T18:53:05Z",
+  "channel": "STABLE",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-11.jar",
+    "checksums": {
+     "sha256": "f4e9c5c374a53d17b6173cac35242c05c12217b656b6cc5dc07354cc37ec4066"
+    },
+    "size": 55072610,
+    "url": "https://fill-data.papermc.io/v1/objects/f4e9c5c374a53d17b6173cac35242c05c12217b656b6cc5dc07354cc37ec4066/folia-1.21.11-11.jar"
+   }
+  }
+ },
+ {
+  "id": 10,
+  "time": "2026-01-04T19:46:20Z",
+  "channel": "STABLE",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-10.jar",
+    "checksums": {
+     "sha256": "053c0d900af8fc0477b45b45d10900a96f740ce2df8400059e4cc99ce290b868"
+    },
+    "size": 55066895,
+    "url": "https://fill-data.papermc.io/v1/objects/053c0d900af8fc0477b45b45d10900a96f740ce2df8400059e4cc99ce290b868/folia-1.21.11-10.jar"
+   }
+  }
+ },
+ {
+  "id": 9,
+  "time": "2026-01-03T00:13:42Z",
+  "channel": "STABLE",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-9.jar",
+    "checksums": {
+     "sha256": "1a47ab29b4adc224c3befddcb0ae9718d63ddd1f05b4ec46652055030acebd7f"
+    },
+    "size": 55066388,
+    "url": "https://fill-data.papermc.io/v1/objects/1a47ab29b4adc224c3befddcb0ae9718d63ddd1f05b4ec46652055030acebd7f/folia-1.21.11-9.jar"
+   }
+  }
+ },
+ {
+  "id": 8,
+  "time": "2025-12-31T17:48:26Z",
+  "channel": "STABLE",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-8.jar",
+    "checksums": {
+     "sha256": "0f476ad6441ff4967f3d4f9e8a8f351b47ef6ff4dc2cae6707d909f268f98408"
+    },
+    "size": 55070705,
+    "url": "https://fill-data.papermc.io/v1/objects/0f476ad6441ff4967f3d4f9e8a8f351b47ef6ff4dc2cae6707d909f268f98408/folia-1.21.11-8.jar"
+   }
+  }
+ },
+ {
+  "id": 7,
+  "time": "2025-12-31T17:45:17Z",
+  "channel": "STABLE",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-7.jar",
+    "checksums": {
+     "sha256": "e87c357beeb756a25b183e7831b3eb48dde1013d9336a68c7e7b4c03e8fd1eca"
+    },
+    "size": 55071709,
+    "url": "https://fill-data.papermc.io/v1/objects/e87c357beeb756a25b183e7831b3eb48dde1013d9336a68c7e7b4c03e8fd1eca/folia-1.21.11-7.jar"
+   }
+  }
+ },
+ {
+  "id": 6,
+  "time": "2025-12-25T03:04:11Z",
+  "channel": "BETA",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-6.jar",
+    "checksums": {
+     "sha256": "dd9024830591269724b5940324eda64f533e8318af77e30584411a0911311d70"
+    },
+    "size": 55388060,
+    "url": "https://fill-data.papermc.io/v1/objects/dd9024830591269724b5940324eda64f533e8318af77e30584411a0911311d70/folia-1.21.11-6.jar"
+   }
+  }
+ },
+ {
+  "id": 5,
+  "time": "2025-12-25T00:54:46Z",
+  "channel": "BETA",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-5.jar",
+    "checksums": {
+     "sha256": "e942a1b1c734285b00b3ad7e6138231916372ec2011dc0abb15f268cf33d7275"
+    },
+    "size": 55387926,
+    "url": "https://fill-data.papermc.io/v1/objects/e942a1b1c734285b00b3ad7e6138231916372ec2011dc0abb15f268cf33d7275/folia-1.21.11-5.jar"
+   }
+  }
+ },
+ {
+  "id": 4,
+  "time": "2025-12-24T23:33:59Z",
+  "channel": "BETA",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-4.jar",
+    "checksums": {
+     "sha256": "e7d1c95ea083cb199400b96c2f40d54a3e2440a86019712799d55a7d948df1fb"
+    },
+    "size": 55387543,
+    "url": "https://fill-data.papermc.io/v1/objects/e7d1c95ea083cb199400b96c2f40d54a3e2440a86019712799d55a7d948df1fb/folia-1.21.11-4.jar"
+   }
+  }
+ },
+ {
+  "id": 3,
+  "time": "2025-12-21T23:35:28Z",
+  "channel": "BETA",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-3.jar",
+    "checksums": {
+     "sha256": "787016fab2f83b365b8e14d8b22bbc1758e2630795ce8e42dff51d917726f757"
+    },
+    "size": 54463752,
+    "url": "https://fill-data.papermc.io/v1/objects/787016fab2f83b365b8e14d8b22bbc1758e2630795ce8e42dff51d917726f757/folia-1.21.11-3.jar"
+   }
+  }
+ },
+ {
+  "id": 2,
+  "time": "2025-12-16T18:39:12Z",
+  "channel": "ALPHA",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-2.jar",
+    "checksums": {
+     "sha256": "15e2a9dcca5f11f4aa02cf36a9d01ea2972ddaa5d479edeabc08bc83a32a48e3"
+    },
+    "size": 54433665,
+    "url": "https://fill-data.papermc.io/v1/objects/15e2a9dcca5f11f4aa02cf36a9d01ea2972ddaa5d479edeabc08bc83a32a48e3/folia-1.21.11-2.jar"
+   }
+  }
+ },
+ {
+  "id": 1,
+  "time": "2025-12-16T18:13:34Z",
+  "channel": "ALPHA",
+  "downloads": {
+   "server:default": {
+    "name": "folia-1.21.11-1.jar",
+    "checksums": {
+     "sha256": "43f6cec8d96e6172cb646520039067d71fabd87600580cc0d676ee377d649a94"
+    },
+    "size": 54434508,
+    "url": "https://fill-data.papermc.io/v1/objects/43f6cec8d96e6172cb646520039067d71fabd87600580cc0d676ee377d649a94/folia-1.21.11-1.jar"
+   }
+  }
+ }
+]

@@ -6,7 +6,7 @@ import {
   SimpleGrid, ThemeIcon, ScrollArea, Card
 } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
 import { 
@@ -16,6 +16,7 @@ import {
   IconBolt, IconSettings, IconShieldCheck
 } from '@tabler/icons-react'
 import type { CreateServerInput, ModLoaderType } from '@shared/types'
+import { isPluginPlatform, type PluginPlatform } from '@shared/constants'
 import { ArchitectPreview } from '../../components/servers/ArchitectPreview'
 
 export const Route = createFileRoute('/servers/create')({
@@ -39,7 +40,9 @@ interface EngineOption {
 
 const ENGINES: EngineOption[] = [
   { id: '', name: 'Vanilla', description: 'The pure Minecraft experience. Stable, official, and straightforward.', icon: IconBox, recommended: true },
-  { id: 'paper', name: 'Spigot / Paper', description: 'High performance with plugin support. Plugin management is on the roadmap.', icon: IconBolt, soon: true },
+  { id: 'paper', name: 'Paper', description: 'High-performance server with Bukkit/Spigot plugin support. The standard choice for busy public servers.', icon: IconBolt, highlight: true },
+  { id: 'purpur', name: 'Purpur', description: 'A Paper fork with extra gameplay and performance options. Runs the same plugins as Paper.', icon: IconBolt },
+  { id: 'folia', name: 'Folia', description: 'Regionised multithreading for very large player counts. Only runs plugins built for Folia.', icon: IconBolt },
   { id: 'neoforge', name: 'NeoForge', description: 'The modern, performance-first fork of Forge. Optimized for the latest versions.', icon: IconRocket, highlight: true },
   { id: 'forge', name: 'Forge', description: 'The classic modding engine. Supports the widest array of complex modpacks.', icon: IconSettings },
   { id: 'fabric', name: 'Fabric', description: 'Lightweight, modular, and extremely fast. Ideal for modern technical play.', icon: IconRocket },
@@ -73,12 +76,46 @@ function CreateServerPage() {
   const [selectedLoaderVersion, setSelectedLoaderVersion] = useState<string>('')
   const [selectedIdentity, setSelectedIdentity] = useState('sword')
   const [eulaAccepted, setEulaAccepted] = useState(false)
+  const [optimizedJvm, setOptimizedJvm] = useState(false)
+
+  // Paper, Purpur and Folia publish their own list of supported Minecraft
+  // versions, and their "loader version" is a build number.
+  const pluginPlatform = isPluginPlatform(selectedLoader) ? (selectedLoader as PluginPlatform) : null
+
+  const { data: platformVersions, isLoading: loadingPlatformVersions, error: platformVersionsError } = useQuery({
+    queryKey: ['serverSoftwareVersions', pluginPlatform],
+    queryFn: () => window.api.getServerSoftwareVersions(pluginPlatform as PluginPlatform),
+    enabled: !!pluginPlatform,
+    staleTime: 5 * 60_000
+  })
+
+  const versionOptions = pluginPlatform ? (platformVersions ?? []) : MC_VERSIONS
+  const versionSupported = !pluginPlatform || !!platformVersions?.includes(form.minecraftVersion)
+
+  // Keep the selected Minecraft version valid for the selected engine.
+  useEffect(() => {
+    if (pluginPlatform) {
+      if (platformVersions?.length && !platformVersions.includes(form.minecraftVersion)) {
+        setForm((f) => ({ ...f, minecraftVersion: platformVersions[0] }))
+        setSelectedLoaderVersion('')
+      }
+    } else if (!MC_VERSIONS.includes(form.minecraftVersion)) {
+      setForm((f) => ({ ...f, minecraftVersion: MC_VERSIONS[0] }))
+      setSelectedLoaderVersion('')
+    }
+  }, [pluginPlatform, platformVersions, form.minecraftVersion])
 
   const { data: loaderVersions, isLoading: loadingVersions } = useQuery({
     queryKey: ['loaderVersions', selectedLoader, form.minecraftVersion],
     queryFn: () => window.api.getModLoaderVersions(selectedLoader as ModLoaderType, form.minecraftVersion),
-    enabled: !!selectedLoader && !!form.minecraftVersion
+    enabled: !!selectedLoader && !!form.minecraftVersion && versionSupported
   })
+
+  // Default to the newest stable build of a plugin platform.
+  useEffect(() => {
+    if (!pluginPlatform || selectedLoaderVersion || !loaderVersions?.length) return
+    setSelectedLoaderVersion((loaderVersions.find((v) => v.stable) ?? loaderVersions[0]).version)
+  }, [pluginPlatform, loaderVersions, selectedLoaderVersion])
 
   const createMutation = useMutation({
     mutationFn: (input: CreateServerInput) => window.api.createServer(input),
@@ -101,7 +138,8 @@ function CreateServerPage() {
     const input: CreateServerInput = {
       ...form,
       modLoader: selectedLoader ? (selectedLoader as ModLoaderType) : undefined,
-      modLoaderVersion: selectedLoaderVersion || undefined
+      modLoaderVersion: selectedLoaderVersion || undefined,
+      jvmProfile: optimizedJvm ? 'aikar' : 'default'
     }
     createMutation.mutate(input)
   }
@@ -235,6 +273,8 @@ function CreateServerPage() {
                             if (engine.soon) return
                             setSelectedLoader(engine.id)
                             setSelectedLoaderVersion('')
+                            // Tuned GC flags are the sensible default for plugin servers.
+                            setOptimizedJvm(isPluginPlatform(engine.id))
                           }}
                           style={{
                             cursor: engine.soon ? 'not-allowed' : 'pointer',
@@ -265,8 +305,12 @@ function CreateServerPage() {
                    <Box>
                       <Text size="xs" fw={800} c="dark.1" tt="uppercase" mb={12}>Minecraft Version</Text>
                       <Select
-                        data={MC_VERSIONS}
+                        data={versionOptions}
                         value={form.minecraftVersion}
+                        searchable={!!pluginPlatform}
+                        disabled={!!pluginPlatform && loadingPlatformVersions}
+                        leftSection={pluginPlatform && loadingPlatformVersions ? <Loader size="xs" color="emerald.4" /> : undefined}
+                        error={platformVersionsError ? `Could not load ${engineName} versions: ${(platformVersionsError as Error).message}` : undefined}
                         onChange={(val) => {
                           setForm({ ...form, minecraftVersion: val || '1.21.4' })
                           setSelectedLoaderVersion('')
@@ -276,12 +320,15 @@ function CreateServerPage() {
                       
                       <Box mt="md" p="md" bg="dark.8" style={{ borderRadius: 8 }}>
                          <Text size="xs" fw={800} c="emerald.4" tt="uppercase" mb="xs" style={{ letterSpacing: 1 }}>
-                           {selectedLoader ? `${engineName} Version` : 'Selection Status'}
+                           {pluginPlatform ? `${engineName} Build` : selectedLoader ? `${engineName} Version` : 'Selection Status'}
                          </Text>
                          {selectedLoader ? (
                            <Select
-                             placeholder={`Select ${engineName} version...`}
-                             data={(loaderVersions || []).map(v => v.version)}
+                             placeholder={pluginPlatform ? `Select ${engineName} build...` : `Select ${engineName} version...`}
+                             data={(loaderVersions || []).map(v => ({
+                               value: v.version,
+                               label: pluginPlatform ? `Build ${v.version}${v.stable ? '' : ' (experimental)'}` : v.version
+                             }))}
                              value={selectedLoaderVersion}
                              onChange={(val) => setSelectedLoaderVersion(val || '')}
                              disabled={loadingVersions}
@@ -308,15 +355,16 @@ function CreateServerPage() {
                      </Group>
                      <Box px="md" py="xl">
                         <Slider 
-                          min={1} max={16} step={1}
+                          min={1} max={32} step={1}
                           value={parseInt(form.maxRam || '4G')}
-                          onChange={(val) => setForm({ ...form, minRam: `${Math.floor(val/2)}G`, maxRam: `${val}G` })}
+                          onChange={(val) => setForm({ ...form, minRam: `${Math.max(1, Math.floor(val / 2))}G`, maxRam: `${val}G` })}
                           color="emerald.4"
                           label={null}
                           marks={[
                             { value: 2, label: <Text size="xs" fw={700} c="dark.2" mt={8}>2GB (MIN)</Text> },
                             { value: 6, label: <Text size="xs" fw={700} c="emerald.4" mt={8}>6GB (REC)</Text> },
-                            { value: 16, label: <Text size="xs" fw={700} c="dark.2" mt={8}>16GB (EXT)</Text> }
+                            { value: 16, label: <Text size="xs" fw={700} c="dark.2" mt={8}>16GB</Text> },
+                            { value: 32, label: <Text size="xs" fw={700} c="dark.2" mt={8}>32GB (EXT)</Text> }
                           ]}
                         />
                      </Box>
@@ -351,6 +399,25 @@ function CreateServerPage() {
                         </Group>
                      </Card>
                   </Group>
+
+                  <Card p="md" bg="dark.8" style={{ border: '1px solid var(--mantine-color-dark-5)' }}>
+                     <Group justify="space-between" wrap="nowrap">
+                        <Box>
+                           <Text size="xs" fw={800} c="white">Optimized JVM flags</Text>
+                           <Text size="xs" c="dark.2">
+                              Applies Aikar's G1GC tuning (recommended by PaperMC) and reserves the full heap up front
+                              to keep garbage-collection pauses short on busy servers.
+                           </Text>
+                        </Box>
+                        <Switch
+                           aria-label="Optimized JVM flags"
+                           checked={optimizedJvm}
+                           onChange={(e) => setOptimizedJvm(e.currentTarget.checked)}
+                           color="emerald.4"
+                           size="md"
+                        />
+                     </Group>
+                  </Card>
 
                   <Box mt="md">
                      <Checkbox
@@ -393,7 +460,7 @@ function CreateServerPage() {
                   else handleCreate()
                 }}
                 loading={createMutation.isPending}
-                disabled={step === 3 && !eulaAccepted}
+                disabled={(step === 3 && !eulaAccepted) || (step === 2 && !!selectedLoader && !selectedLoaderVersion)}
              >
                 {step === 3 ? 'Initialize & Deploy Server' : step === 2 ? 'Continue to System Configuration' : 'Continue to Engine Selection'}
              </Button>

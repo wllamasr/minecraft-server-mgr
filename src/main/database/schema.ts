@@ -19,7 +19,9 @@ export const servers = sqliteTable('servers', {
   modpackSource: text('modpack_source'),
   modpackProjectId: text('modpack_project_id'),
   modpackVersionId: text('modpack_version_id'),
-  modpackName: text('modpack_name')
+  modpackName: text('modpack_name'),
+  // JVM argument profile: 'default' (heap only) or 'aikar' (tuned G1GC flags)
+  jvmProfile: text('jvm_profile').notNull().default('default')
 })
 
 // ─── Installed Mods ─────────────────────────────────────────

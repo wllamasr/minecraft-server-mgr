@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { useDebouncedValue } from '@mantine/hooks'
 import type { ModSearchOptions, ModSource } from '@shared/types'
+import { isPluginPlatform } from '@shared/constants'
 
 type ModsSearch = {
   serverId?: string
@@ -49,6 +50,13 @@ function ModsPage() {
     }
   }, [server])
 
+  // Plugins (Paper, Purpur, Folia) are only available from Modrinth.
+  const plugins = isPluginPlatform(loader)
+  const noun = plugins ? 'plugin' : 'mod'
+  useEffect(() => {
+    if (plugins && source !== 'modrinth') setSource('modrinth')
+  }, [plugins, source])
+
   const searchOptions: ModSearchOptions = {
     source,
     query: debouncedQuery,
@@ -79,7 +87,7 @@ function ModsPage() {
   return (
     <Stack gap="lg" h="100%" style={{ overflow: 'hidden' }}>
       <Group justify="space-between">
-        <Title order={2}>Mod Browser</Title>
+        <Title order={2}>{plugins ? 'Plugin Browser' : 'Mod Browser'}</Title>
         {server && (
           <Badge size="lg" variant="light" color="blue">
             Browsing for: {server.name}
@@ -91,7 +99,7 @@ function ModsPage() {
       <Group align="flex-end" gap="md">
         <TextInput
           label="Search"
-          placeholder="Search mods..."
+          placeholder={`Search ${noun}s...`}
           leftSection={<IconSearch size={16} />}
           value={query}
           onChange={(e) => {
@@ -105,7 +113,7 @@ function ModsPage() {
           label="Source"
           data={[
             { value: 'modrinth', label: 'Modrinth' },
-            { value: 'curseforge', label: 'CurseForge' }
+            { value: 'curseforge', label: 'CurseForge', disabled: plugins }
           ]}
           value={source}
           onChange={(val) => {
@@ -122,7 +130,10 @@ function ModsPage() {
             { value: 'fabric', label: 'Fabric' },
             { value: 'forge', label: 'Forge' },
             { value: 'neoforge', label: 'NeoForge' },
-            { value: 'quilt', label: 'Quilt' }
+            { value: 'quilt', label: 'Quilt' },
+            { value: 'paper', label: 'Paper' },
+            { value: 'purpur', label: 'Purpur' },
+            { value: 'folia', label: 'Folia' }
           ]}
           value={loader}
           onChange={(val) => {
@@ -171,7 +182,7 @@ function ModsPage() {
         )}
 
         {!isLoading && searchResults?.mods.length === 0 && (
-          <Text c="dimmed" ta="center" py="xl">No mods found matching your criteria.</Text>
+          <Text c="dimmed" ta="center" py="xl">No {noun}s found matching your criteria.</Text>
         )}
 
         {searchResults && searchResults.mods.length > 0 && (

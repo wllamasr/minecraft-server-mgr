@@ -40,7 +40,8 @@ export function runMigrations(): void {
       modpack_source TEXT,
       modpack_project_id TEXT,
       modpack_version_id TEXT,
-      modpack_name TEXT
+      modpack_name TEXT,
+      jvm_profile TEXT NOT NULL DEFAULT 'default'
     );
 
     CREATE TABLE IF NOT EXISTS installed_mods (
@@ -86,6 +87,7 @@ export function runMigrations(): void {
   addServerColumn('modpack_project_id', 'modpack_project_id TEXT')
   addServerColumn('modpack_version_id', 'modpack_version_id TEXT')
   addServerColumn('modpack_name', 'modpack_name TEXT')
+  addServerColumn('jvm_profile', "jvm_profile TEXT NOT NULL DEFAULT 'default'")
 
   sqlite.close()
   log.info('[DB] Migrations completed successfully')

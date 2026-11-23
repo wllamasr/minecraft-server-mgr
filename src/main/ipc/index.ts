@@ -8,6 +8,8 @@ import * as hostsManager from '../services/hosts-manager'
 import { detectJavaInstallations } from '../services/java-detector'
 import { getLoaderVersions } from '../services/mod-loader-installer'
 import { isSafeExternalUrl } from '../../shared/utils/url'
+import { getSoftwareVersions } from '../services/server-software'
+import { isPluginPlatform } from '../../shared/constants'
 import { app } from 'electron'
 import log from '../utils/logger'
 import type { ModLoaderType } from '../../shared/types'
@@ -70,6 +72,12 @@ export function registerIpcHandlers(): void {
   // ─── Mod Loaders ───────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.MODLOADER_GET_VERSIONS, async (_e, { loader, mcVersion }: { loader: ModLoaderType; mcVersion: string }) => {
     return await getLoaderVersions(loader, mcVersion)
+  })
+
+  // Minecraft versions a plugin platform (Paper, Purpur, Folia) publishes builds for.
+  ipcMain.handle(IPC_CHANNELS.SERVER_SOFTWARE_GET_VERSIONS, async (_e, platform: unknown) => {
+    if (!isPluginPlatform(platform as string)) throw new Error('Unknown server software')
+    return await getSoftwareVersions(platform as 'paper' | 'purpur' | 'folia')
   })
 
   // ─── Mod Manager ────────────────────────────────────────

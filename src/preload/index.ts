@@ -59,6 +59,10 @@ const api = {
   getModLoaderVersions: (loader: ModLoaderType, mcVersion: string): Promise<{ version: string; stable: boolean }[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.MODLOADER_GET_VERSIONS, { loader, mcVersion }),
 
+  /** Minecraft versions a plugin platform (paper, purpur, folia) has builds for, newest first. */
+  getServerSoftwareVersions: (platform: 'paper' | 'purpur' | 'folia'): Promise<string[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SERVER_SOFTWARE_GET_VERSIONS, platform),
+
   searchMods: (options: import('../shared/types/mod.types').ModSearchOptions): Promise<import('../shared/types/mod.types').ModSearchResponse> =>
     ipcRenderer.invoke('mod-manager:search', options),
 

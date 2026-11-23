@@ -5,7 +5,8 @@ import { Link } from '@tanstack/react-router'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
 import { useTranslation } from 'react-i18next'
-import type { ServerWithStatus, ModLoaderType } from '@shared/types'
+import type { ServerWithStatus } from '@shared/types'
+import { isPluginPlatform } from '@shared/constants'
 
 interface ServerModsProps {
   server: ServerWithStatus
@@ -27,7 +28,7 @@ export function ServerMods({ server }: ServerModsProps) {
       queryClient.invalidateQueries({ queryKey: ['installed-mods', server.id] })
     },
     onError: (err: Error) => {
-      notifications.show({ title: 'Error toggling mod', message: err.message, color: 'red' })
+      notifications.show({ title: `Error toggling ${noun}`, message: err.message, color: 'red' })
     }
   })
 
@@ -35,19 +36,22 @@ export function ServerMods({ server }: ServerModsProps) {
     mutationFn: (modDbId: string) => window.api.uninstallMod(server.id, modDbId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['installed-mods', server.id] })
-      notifications.show({ message: 'Mod uninstalled', color: 'green' })
+      notifications.show({ message: `${Noun} uninstalled`, color: 'green' })
     },
     onError: (err: Error) => {
-      notifications.show({ title: 'Error uninstalling mod', message: err.message, color: 'red' })
+      notifications.show({ title: `Error uninstalling ${noun}`, message: err.message, color: 'red' })
     }
   })
 
   // Prevent users from browsing mods if it's a vanilla server
   const isVanilla = !server.modLoader
+  // Paper-family servers load plugins from plugins/ instead of mods from mods/
+  const noun = isPluginPlatform(server.modLoader) ? 'plugin' : 'mod'
+  const Noun = noun === 'plugin' ? 'Plugin' : 'Mod'
 
   const handleUninstall = (mod: any) => {
     modals.openConfirmModal({
-      title: 'Uninstall Mod',
+      title: `Uninstall ${Noun}`,
       children: <Text size="sm">Are you sure you want to uninstall and delete {mod.name}?</Text>,
       labels: { confirm: 'Uninstall', cancel: 'Cancel' },
       confirmProps: { color: 'red' },
@@ -58,7 +62,7 @@ export function ServerMods({ server }: ServerModsProps) {
   return (
     <Stack gap="md" mt="md">
       <Group justify="space-between">
-        <Title order={3}>Installed Mods</Title>
+        <Title order={3}>Installed {Noun}s</Title>
         <Button
           component={Link}
           to="/mods/"
@@ -69,13 +73,13 @@ export function ServerMods({ server }: ServerModsProps) {
           disabled={isVanilla}
           variant="light"
         >
-          Browse Mods
+          Browse {Noun}s
         </Button>
       </Group>
 
       {isVanilla && (
         <Text c="dimmed" size="sm" ta="center" mt="xl">
-          This is a Vanilla server. You must set a mod loader (Forge, Fabric, etc.) before installing mods.
+          This is a Vanilla server. Mods need a mod loader (Forge, Fabric, …) and plugins need Paper, Purpur or Folia.
         </Text>
       )}
 
@@ -83,7 +87,7 @@ export function ServerMods({ server }: ServerModsProps) {
 
       {!isVanilla && !isLoading && (!mods || mods.length === 0) && (
         <Text c="dimmed" size="sm" ta="center" mt="xl">
-          No mods installed yet.
+          No {noun}s installed yet.
         </Text>
       )}
 

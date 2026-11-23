@@ -18,12 +18,16 @@ from a single window. No batch scripts, no manual EULA edits.
   for you.
 - **Mod loaders** — install **Forge**, **NeoForge**, **Fabric**, or **Quilt** with the
   correct launch logic per loader.
-- **Mod & modpack management** — search and install mods from **Modrinth** and **CurseForge**,
-  toggle them on/off, and remove them.
+- **Plugin platforms** — run **Paper**, **Purpur**, or **Folia** (aimed at large player
+  counts) for local servers. Builds are chosen in the wizard and verified against the
+  project's published checksum. An optional "Optimized JVM flags" profile applies Aikar's
+  G1GC flags. Remote hosts (`msmd`) do not support these engines or the JVM profile yet.
+- **Mod, plugin & modpack management** — search and install mods from **Modrinth** and
+  **CurseForge** (plugins from Modrinth only), toggle them on/off, and remove them.
 - **Live console** — real-time log streaming with command input, straight to the server's stdin.
 - **Resource telemetry** — per-server CPU and memory usage while it runs.
 - **Smart Java detection** — scans `JAVA_HOME`, `PATH`, and common install locations and
-  picks the best JDK for the target Minecraft version (Java 8 / 17 / 21).
+  picks the best JDK for the target Minecraft version (Java 8 / 17 / 21 / 25).
 - **`server.properties` editor** — edit settings through the UI; comments in the file are
   preserved on save.
 - **Auto-updates** — packaged builds update themselves via an NSIS installer.
@@ -50,8 +54,8 @@ from a single window. No batch scripts, no manual EULA edits.
 
 - **Node.js 24 LTS** with npm 11 (CI runs on Node 24; Node 22.22.2+ also satisfies `engines`).
   No C++ toolchain is required.
-- **A Java runtime** to actually run servers — Java 21 for Minecraft 1.20.5+, Java 17 for
-  1.17–1.20, Java 8 for older releases. The app detects installed JDKs and links to
+- **A Java runtime** to actually run servers — Java 25 for Minecraft 26.x, Java 21 for
+  1.20.5–1.21.x, Java 17 for 1.17–1.20.4, Java 8 for 1.16.5 and older. The app detects installed JDKs and links to
   [Adoptium](https://adoptium.net/) if none is found.
 - **Windows** — packaging targets Windows (NSIS). Development also runs on the other
   platforms Electron supports.

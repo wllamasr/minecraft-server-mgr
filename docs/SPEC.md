@@ -11,6 +11,7 @@ mods, configuration, runtime lifecycle, and live diagnostics.
 
 Managing servers on **remote hosts** through the `msmd` daemon is an additive, early-stage
 capability specified separately in [DAEMON.md](DAEMON.md); this document covers local servers.
+Remote hosts do not support Paper, Purpur, Folia or the JVM profile yet (planned next).
 
 Out of scope: Bedrock edition, proxy networks (BungeeCord/Velocity), and multi-user access
 control.
@@ -27,7 +28,9 @@ control.
 | ------------- | -------------------------------------------------------------------------- |
 | Server        | One managed Minecraft server instance with its own directory and DB row.   |
 | Mod loader    | Forge, NeoForge, Fabric, or Quilt — the runtime that loads mods.           |
+| Plugin platform | Paper, Purpur, or Folia — a complete server jar that loads plugins from `plugins/`. |
 | Vanilla       | A server with no mod loader.                                               |
+| JVM profile   | `default` or `aikar` (Aikar's G1GC flags, `-Xms` equal to `-Xmx`).         |
 | Servers root  | The parent directory that holds every server's folder (configurable).      |
 
 ## 4. Functional requirements
@@ -45,7 +48,18 @@ control.
   `[A-Za-z0-9_-]` become `_`.
 - **FR-3** Creation fails if the target directory already exists.
 - **FR-4** The vanilla `server.jar` is downloaded from Mojang's official version manifest
-  for the chosen version. An unknown version is rejected.
+  for the chosen version and verified against Mojang's SHA-1. An unknown version is rejected.
+- **FR-4b** The user can instead choose a plugin platform: **Paper**, **Purpur**, or **Folia**.
+  The Minecraft version list is fetched live from the project (release versions only), and the
+  user picks a build; the newest stable build is preselected and non-stable builds are labelled
+  "(experimental)". The build is a complete jar saved as `server.jar` (no installer step). It
+  is verified against the project's published checksum (SHA-256 for Paper/Folia, MD5 for
+  Purpur); on mismatch the file is deleted and provisioning fails. Folia only runs plugins
+  that explicitly support Folia.
+- **FR-4c** The user can choose a **JVM profile**: `default`, or `aikar` (Aikar's G1GC flags
+  as published in the PaperMC docs, with `-Xms` equal to `-Xmx`). It works with every engine;
+  for Forge/NeoForge the flags are written to `user_jvm_args.txt`. It defaults to on when a
+  plugin platform is selected and off otherwise. The RAM choice goes up to 32 GB.
 - **FR-5** A default `server.properties` and `eula.txt` (`eula=true`) are written.
 - **FR-6** If a mod loader is chosen, it is installed into the server directory before the
   server is considered created.
@@ -60,7 +74,7 @@ control.
   `stopped → starting → running → stopping → stopped`, with `crashed` reachable from a
   non-zero exit or process error.
 - **FR-10** Starting a running server, or stopping a stopped one, is rejected with an error.
-- **FR-11** Start uses loader-appropriate launch logic: vanilla/Fabric/Quilt launch a jar;
+- **FR-11** Start uses loader-appropriate launch logic: vanilla/Fabric/Quilt/Paper/Purpur/Folia launch a jar;
   Forge/NeoForge use the generated `run.bat`/`run.sh` and write RAM into
   `user_jvm_args.txt`.
 - **FR-12** Stop issues the `stop` console command for a graceful shutdown and force-kills
@@ -75,8 +89,8 @@ control.
 
 - **FR-14** The app discovers JDKs from `JAVA_HOME`, `PATH`, and common Windows install
   locations, reporting version, major version, and 32/64-bit.
-- **FR-15** Required Java major version by Minecraft version: **21** for 1.20.5+/1.21+,
-  **17** for 1.17–1.20, **8** for older.
+- **FR-15** Required Java major version by Minecraft version: **25** for 26.x, **21** for
+  1.20.5–1.21.x, **17** for 1.17–1.20.4, **8** for 1.16.5 and older.
 - **FR-16** When no per-server Java path is set, the app picks the best compatible JDK:
   64-bit preferred, then highest major version that meets the minimum. If none qualifies,
   it falls back to `java` on `PATH`.
@@ -95,6 +109,11 @@ control.
 - **FR-21** The user can install, uninstall, and enable/disable a mod; installed mods are
   tracked per server.
 - **FR-22** Vanilla servers block mod installation and surface guidance to set a loader.
+- **FR-22d** Paper, Purpur, and Folia servers load add-ons from `plugins/` instead of `mods/`.
+  The server's "Mods" tab is shown as "Plugins" and the browser as "Plugin Browser". Plugins
+  come from Modrinth only; CurseForge is disabled for these servers. For Paper and Purpur the
+  search matches projects tagged paper, purpur, spigot, or bukkit; for Folia only projects
+  tagged folia.
 
 ### 4.5b Modpacks
 
@@ -135,12 +154,13 @@ Persisted in SQLite (see [schema.ts](../src/main/database/schema.ts)).
 | `name`               | text    | user-facing name                       |
 | `absolute_path`      | text    | unique; server directory               |
 | `minecraft_version`  | text    |                                        |
-| `mod_loader`         | text    | nullable; forge/neoforge/fabric/quilt  |
+| `mod_loader`         | text    | nullable; forge/neoforge/fabric/quilt/paper/purpur/folia |
 | `mod_loader_version` | text    | nullable                               |
 | `java_path`          | text    | nullable; overrides auto-detection     |
 | `port`               | int     | default 25565                          |
 | `min_ram`/`max_ram`  | text    | e.g. `1G` / `2G`                       |
 | `auto_start`         | int     | boolean; default 0                     |
+| `jvm_profile`        | text    | `default`/`aikar`; NOT NULL, default `default` |
 | `created_at`/`updated_at` | text | ISO 8601                             |
 
 ### `installed_mods`
