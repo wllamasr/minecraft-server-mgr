@@ -292,7 +292,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
                 onClick={() => action(
                   window.api.deleteRemoteServer(host.id, s.id),
                   // A running server is stopped first and disappears from the list once it is down.
-                  s.status === 'stopped' || s.status === 'crashed' ? 'Deleted' : 'Stopping the server, then deleting it'
+                  ['running', 'starting', 'stopping'].includes(s.status) ? 'Stopping the server, then deleting it' : 'Deleted'
                 )}>
                 <IconTrash size={16} />
               </ActionIcon>
