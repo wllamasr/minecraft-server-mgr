@@ -134,10 +134,12 @@ For a full step-by-step VM walkthrough (Multipass or Hyper-V), see
 
 ```bash
 make test     # go test ./...  (API routing/auth + helpers)
-make smoke    # build, run over TLS, and exercise the endpoints
+make smoke    # build the real binary, run it over TLS, and assert on auth, pairing and the API
 ```
 
-Both run in CI on every change under `daemon/`.
+`make smoke` needs `go` and `curl`, works on Linux and on Windows (Git Bash), and exits
+non-zero on the first failed check. Both run in CI on every push and pull request, on Linux
+(minimum and latest Go, with the race detector) and on Windows.
 
 ## Layout
 
