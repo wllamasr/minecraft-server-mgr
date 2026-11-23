@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
 import { runMigrations } from './database/migrate'
 import { initializeAutoUpdater } from './services/auto-updater'
+import { isSafeExternalUrl } from '../shared/utils/url'
 import log from './utils/logger'
 
 function createWindow(): void {
@@ -28,9 +29,24 @@ function createWindow(): void {
     mainWindow.show()
   })
 
+  // Links never open inside the app: web links go to the user's browser and
+  // anything else is dropped.
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    if (isSafeExternalUrl(details.url)) {
+      void shell.openExternal(details.url)
+    } else {
+      log.warn('[App] Blocked window.open for a non-http(s) URL')
+    }
     return { action: 'deny' }
+  })
+
+  // The window only ever shows the bundled UI. Block navigation away from it
+  // (e.g. a link inside third-party mod description HTML).
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const devUrl = process.env['ELECTRON_RENDERER_URL']
+    if (is.dev && devUrl && url.startsWith(devUrl)) return
+    event.preventDefault()
+    if (isSafeExternalUrl(url)) void shell.openExternal(url)
   })
 
   // HMR for renderer
@@ -41,7 +57,23 @@ function createWindow(): void {
   }
 }
 
+// A second instance would open the same SQLite database and could start the
+// same servers twice, so focus the existing window instead.
+const hasInstanceLock = app.requestSingleInstanceLock()
+if (!hasInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (!win) return
+    if (win.isMinimized()) win.restore()
+    win.focus()
+  })
+}
+
 app.whenReady().then(() => {
+  if (!hasInstanceLock) return
+
   log.info('[App] Starting Minecraft Server Manager v' + app.getVersion())
 
   // Set app user model id for windows

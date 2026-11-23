@@ -6,7 +6,8 @@ import * as configManager from '../services/config-manager'
 import * as modManager from '../services/mod-manager'
 import * as hostsManager from '../services/hosts-manager'
 import { detectJavaInstallations } from '../services/java-detector'
-import { getLoaderVersions, installModLoader } from '../services/mod-loader-installer'
+import { getLoaderVersions } from '../services/mod-loader-installer'
+import { isSafeExternalUrl } from '../../shared/utils/url'
 import { app } from 'electron'
 import log from '../utils/logger'
 import type { ModLoaderType } from '../../shared/types'
@@ -69,10 +70,6 @@ export function registerIpcHandlers(): void {
   // ─── Mod Loaders ───────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.MODLOADER_GET_VERSIONS, async (_e, { loader, mcVersion }: { loader: ModLoaderType; mcVersion: string }) => {
     return await getLoaderVersions(loader, mcVersion)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.MODLOADER_INSTALL, async (_e, { loader, loaderVersion, mcVersion, serverDir }: { loader: ModLoaderType; loaderVersion: string; mcVersion: string; serverDir: string }) => {
-    await installModLoader(loader, loaderVersion, mcVersion, serverDir)
   })
 
   // ─── Mod Manager ────────────────────────────────────────
@@ -150,8 +147,13 @@ export function registerIpcHandlers(): void {
     return result.canceled ? null : result.filePaths[0]
   })
 
-  ipcMain.handle(IPC_CHANNELS.SYSTEM_OPEN_EXTERNAL, (_e, url: string) => {
-    shell.openExternal(url)
+  ipcMain.handle(IPC_CHANNELS.SYSTEM_OPEN_EXTERNAL, async (_e, url: unknown) => {
+    // Only web links: the renderer must not be able to launch local programs.
+    if (!isSafeExternalUrl(url)) {
+      log.warn('[IPC] Refused to open a non-http(s) external URL')
+      throw new Error('Only http(s) links can be opened')
+    }
+    await shell.openExternal(url)
   })
 
   // ─── App / Window controls ─────────────────────────────

@@ -59,9 +59,6 @@ const api = {
   getModLoaderVersions: (loader: ModLoaderType, mcVersion: string): Promise<{ version: string; stable: boolean }[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.MODLOADER_GET_VERSIONS, { loader, mcVersion }),
 
-  installModLoader: (loader: ModLoaderType, loaderVersion: string, mcVersion: string, serverDir: string): Promise<void> =>
-    ipcRenderer.invoke(IPC_CHANNELS.MODLOADER_INSTALL, { loader, loaderVersion, mcVersion, serverDir }),
-
   searchMods: (options: import('../shared/types/mod.types').ModSearchOptions): Promise<import('../shared/types/mod.types').ModSearchResponse> =>
     ipcRenderer.invoke('mod-manager:search', options),
 

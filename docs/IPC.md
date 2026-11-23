@@ -55,12 +55,15 @@ and installs the mod loader if one was requested.
 | `selectDirectory()`          | `system:select-directory`  | —        | `string \| null`        |
 | `openExternal(url)`          | `system:open-external`     | `string` | `void`                  |
 
+`openExternal` only accepts `http:` and `https:` URLs; anything else is rejected.
+Mod loaders are installed by the main process as part of server creation, so there is no
+renderer-facing "install loader" channel: the renderer never passes a filesystem path to install into.
+
 ## Mod loaders & mods
 
 | `window.api` method                                   | Channel                        | Notes                          |
 | ----------------------------------------------------- | ------------------------------ | ------------------------------ |
 | `getModLoaderVersions(loader, mcVersion)`             | `modloader:get-versions`       | `{ version, stable }[]`        |
-| `installModLoader(loader, loaderVersion, mc, dir)`    | `modloader:install`            | `void`                         |
 | `searchMods(options)`                                 | `mod-manager:search` ¹         | `ModSearchResponse`            |
 | `getMod(source, id)`                                  | `mod-manager:get` ¹            | `UnifiedMod` + `descriptionHtml` |
 | `getModVersions(source, id, gameVersion?, loader?)`   | `mod-manager:get-versions` ¹   | `UnifiedModVersion[]`          |

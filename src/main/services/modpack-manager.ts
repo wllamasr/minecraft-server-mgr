@@ -1,4 +1,4 @@
-import { join, dirname, resolve as resolvePath } from 'path'
+import { join, dirname, resolve as resolvePath, sep } from 'path'
 import { mkdirSync, writeFileSync, unlinkSync } from 'fs'
 import AdmZip from 'adm-zip'
 import { v4 as uuidv4 } from 'uuid'
@@ -106,7 +106,7 @@ export async function applyModpack(
     }
 
     const dest = join(serverDir, file.path)
-    if (!resolvePath(dest).startsWith(serverRoot)) {
+    if (!isInside(serverRoot, dest)) {
       emit(`Skipping path escaping server directory: ${file.path}`, 'WARN')
       continue
     }
@@ -155,6 +155,11 @@ export async function applyModpack(
   return { ...resolved, modCount }
 }
 
+/** True when `target` resolves to a path strictly inside `root`. */
+function isInside(root: string, target: string): boolean {
+  return resolvePath(target).startsWith(root.endsWith(sep) ? root : root + sep)
+}
+
 /** Extract an overrides folder from the zip into the server directory. */
 function applyOverrides(
   zip: AdmZip,
@@ -175,7 +180,7 @@ function applyOverrides(
     if (isUnsafeModpackPath(rel)) continue
 
     const dest = join(serverDir, rel)
-    if (!resolvePath(dest).startsWith(serverRoot)) continue
+    if (!isInside(serverRoot, dest)) continue
 
     mkdirSync(dirname(dest), { recursive: true })
     writeFileSync(dest, entry.getData())

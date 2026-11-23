@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { notifications } from '@mantine/notifications'
 import ReactMarkdown from 'react-markdown'
 import type { ModSource } from '@shared/types'
+import { sanitizeRemoteHtml } from '@renderer/utils/sanitize-html'
 
 type ModDetailSearch = {
   serverId?: string
@@ -200,7 +201,7 @@ function ModDetailPage() {
             <ScrollArea style={{ flex: 1 }} type="auto" offsetScrollbars>
               <div style={{ color: 'var(--mantine-color-dark-0)', fontSize: 14, lineHeight: 1.6 }}>
                 {source === 'curseforge' ? (
-                  <div dangerouslySetInnerHTML={{ __html: mod.descriptionHtml }} />
+                  <div dangerouslySetInnerHTML={{ __html: sanitizeRemoteHtml(mod.descriptionHtml) }} />
                 ) : (
                   <ReactMarkdown>{mod.descriptionHtml}</ReactMarkdown>
                 )}
