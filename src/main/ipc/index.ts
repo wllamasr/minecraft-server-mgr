@@ -5,6 +5,7 @@ import * as consoleManager from '../services/console-manager'
 import * as configManager from '../services/config-manager'
 import * as modManager from '../services/mod-manager'
 import * as hostsManager from '../services/hosts-manager'
+import { shutdownPendingCount } from '../services/app-shutdown'
 import { detectJavaInstallations } from '../services/java-detector'
 import { getLoaderVersions } from '../services/mod-loader-installer'
 import { isSafeExternalUrl } from '../../shared/utils/url'
@@ -199,9 +200,12 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.APP_WINDOW_CLOSE, () => {
-    BrowserWindow.getFocusedWindow()?.close()
+  ipcMain.handle(IPC_CHANNELS.APP_WINDOW_CLOSE, (event) => {
+    // The window that asked, which is not always the focused one.
+    ;(BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow())?.close()
   })
+
+  ipcMain.handle(IPC_CHANNELS.APP_SHUTDOWN_PENDING, () => shutdownPendingCount())
 
   log.info('[IPC] All handlers registered')
 }

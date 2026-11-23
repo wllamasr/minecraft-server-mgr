@@ -127,6 +127,7 @@ mod or plugin browser.
 | `windowMinimize()`      | `app:window-minimize`  | `void`    |
 | `windowMaximize()`      | `app:window-maximize`  | `void`    |
 | `windowClose()`         | `app:window-close`     | `void`    |
+| `shutdownPending()`     | `app:shutdown-pending` | `number`  |
 | `installUpdate()`       | `app:install-update`   | `void`    |
 
 ## Events (main → renderer)
@@ -139,6 +140,7 @@ Each `on*` method registers a listener and returns an unsubscribe function.
 | `onServerStatusChanged(cb)`        | `event:server-status-changed`    | `{ serverId, status }`             |
 | `onTelemetry(serverId, cb)`        | `server-telemetry:<serverId>` ¹  | `ServerTelemetry`                  |
 | `onUpdateDownloaded(cb)`           | `event:app-update-downloaded`    | `version: string`                  |
+| `onShuttingDown(cb)`               | `event:app-shutting-down`        | `serverCount: number`              |
 
 ¹ per-server raw-string channel.
 

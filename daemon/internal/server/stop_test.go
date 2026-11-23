@@ -409,9 +409,10 @@ func TestDeleteWinsOverARestartInFlight(t *testing.T) {
 	m.mu.Lock()
 	delete(m.deleting, "a")
 	m.mu.Unlock()
-	if err := m.Delete("a"); err != nil {
-		t.Fatalf("Delete: %v", err)
+	if _, err := m.RequestDelete("a"); err != nil {
+		t.Fatalf("RequestDelete: %v", err)
 	}
+	m.WaitDeletes()
 	if err := m.Start("a"); err == nil {
 		t.Error("a deleted server could be started")
 	}
@@ -526,5 +527,85 @@ func TestScheduleTickRestartsOnlyRunningServers(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if pidOf(m, "up") != afterFirst {
 		t.Error("the same occurrence restarted the server twice")
+	}
+}
+
+func TestRequestDeleteOfARunningServerReturnsAtOnce(t *testing.T) {
+	m := newRealManager(t)
+	// A server that ignores "stop": the delete has to outlast the grace period.
+	t.Setenv(fakeServerEnv, "ignore")
+	m.stopGrace = time.Second
+	realServer(t, m, "a", "")
+	s, _ := m.store.Get("a")
+	if err := m.Start("a"); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	pending, err := m.RequestDelete("a")
+	if err != nil || !pending {
+		t.Fatalf("RequestDelete = %v, %v; want pending", pending, err)
+	}
+	if took := time.Since(start); took > 500*time.Millisecond {
+		t.Errorf("RequestDelete blocked for %s", took)
+	}
+	if got := m.statusOf("a"); got != StatusStopping {
+		t.Errorf("status right after RequestDelete = %s, want stopping", got)
+	}
+	if err := m.Start("a"); err == nil {
+		t.Error("a server that is being deleted could be started")
+	}
+	// Asking again joins the deletion under way.
+	if pending, err := m.RequestDelete("a"); err != nil || !pending {
+		t.Errorf("second RequestDelete = %v, %v; want pending", pending, err)
+	}
+
+	m.WaitDeletes()
+	if _, err := m.store.Get("a"); err == nil {
+		t.Error("the server record is still there")
+	}
+	if _, err := os.Stat(s.Dir); !os.IsNotExist(err) {
+		t.Errorf("the server directory is still there (%v)", err)
+	}
+	if m.RunningCount() != 0 {
+		t.Error("the server process is still running")
+	}
+	m.mu.Lock()
+	left := len(m.deleting)
+	m.mu.Unlock()
+	if left != 0 {
+		t.Error("the deleting mark was not lifted")
+	}
+}
+
+func TestRequestDeleteOfAStoppedServerIsImmediate(t *testing.T) {
+	m := newRealManager(t)
+	realServer(t, m, "a", "")
+	pending, err := m.RequestDelete("a")
+	if err != nil || pending {
+		t.Fatalf("RequestDelete = %v, %v; want done", pending, err)
+	}
+	if _, err := m.store.Get("a"); err == nil {
+		t.Error("the server record is still there")
+	}
+	if _, err := m.RequestDelete("a"); err == nil {
+		t.Error("deleting a server that does not exist succeeded")
+	}
+}
+
+func TestStopAllLetsADeleteInFlightFinish(t *testing.T) {
+	m := newRealManager(t)
+	realServer(t, m, "a", "")
+	if err := m.Start("a"); err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := m.RequestDelete("a"); err != nil || !pending {
+		t.Fatalf("RequestDelete = %v, %v; want pending", pending, err)
+	}
+	// The daemon's shutdown sequence.
+	m.StopAll()
+	m.WaitDeletes()
+	if _, err := m.store.Get("a"); err == nil {
+		t.Error("shutdown left a half-deleted server behind")
 	}
 }

@@ -64,3 +64,49 @@ export function parseModrinthModpackSlug(input: string): string | null {
   if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) return trimmed
   return null
 }
+
+/** Where Modrinth serves `.mrpack` files from. */
+export const MRPACK_HOST = 'cdn.modrinth.com'
+
+/**
+ * Hosts a `.mrpack` may download its files from. This is the list the Modrinth
+ * pack format defines; Modrinth rejects packs that point anywhere else.
+ */
+export const MODPACK_FILE_HOSTS: readonly string[] = [MRPACK_HOST, 'github.com', 'raw.githubusercontent.com', 'gitlab.com']
+
+/** The host of a plain https URL (default port, no credentials), else null. */
+function plainHttpsHost(url: unknown): string | null {
+  if (typeof url !== 'string') return null
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'https:' || parsed.port !== '' || parsed.username !== '' || parsed.password !== '') {
+    return null
+  }
+  return parsed.hostname.toLowerCase()
+}
+
+/**
+ * A modpack to deploy is named by the URL of its `.mrpack`, and the app or the
+ * daemon then downloads that URL. Only Modrinth is supported, so only its CDN
+ * is accepted: a create request must not be a way to make the machine fetch an
+ * arbitrary address.
+ */
+export function isAllowedMrpackUrl(url: unknown): url is string {
+  return plainHttpsHost(url) === MRPACK_HOST
+}
+
+/** Whether a file listed inside a `.mrpack` may be downloaded from this URL. */
+export function isAllowedModpackFileUrl(url: unknown): url is string {
+  const host = plainHttpsHost(url)
+  return host !== null && MODPACK_FILE_HOSTS.includes(host)
+}
+
+/** The first of a pack file's download URLs that is on an allowed host. */
+export function pickModpackDownload(urls: unknown): string | null {
+  if (!Array.isArray(urls)) return null
+  return urls.find(isAllowedModpackFileUrl) ?? null
+}

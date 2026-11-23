@@ -114,6 +114,10 @@ expect_status 400 "paper build that is not a number" POST /v1/servers -H "$AUTH"
   -d '{"name":"v2","minecraftVersion":"1.21.4","modLoader":"paper","modLoaderVersion":"../../x"}'
 expect_status 400 "paper on a pre-release version" POST /v1/servers -H "$AUTH" -H "$JSON" \
   -d '{"name":"v3","minecraftVersion":"1.21.4-rc1","modLoader":"paper","modLoaderVersion":"12"}'
+expect_status 400 "modpack from a host other than Modrinth" POST /v1/servers -H "$AUTH" -H "$JSON" \
+  -d '{"name":"x","minecraftVersion":"1.21.4","modpack":{"source":"modrinth","projectId":"p","versionId":"v","name":"n","mrpackUrl":"https://example.com/pack.mrpack"}}'
+expect_status 400 "modpack over plain http" POST /v1/servers -H "$AUTH" -H "$JSON" \
+  -d '{"name":"x","minecraftVersion":"1.21.4","modpack":{"source":"modrinth","projectId":"p","versionId":"v","name":"n","mrpackUrl":"http://cdn.modrinth.com/data/pack.mrpack"}}'
 expect_status 400 "malformed memory setting" POST /v1/servers -H "$AUTH" -H "$JSON" \
   -d '{"name":"v4","minecraftVersion":"1.21.4","maxRam":"4G -XX:Evil"}'
 expect_status 400 "minimum memory above maximum" POST /v1/servers -H "$AUTH" -H "$JSON" \
@@ -223,15 +227,18 @@ FAKE
     chmod +x "$FAKEJAVA"
     GOOD="00000000000000000000000000000001"
     BAD="00000000000000000000000000000002"
-    mkdir -p "$WORK/good" "$WORK/bad"
+    GONE="00000000000000000000000000000003"
+    mkdir -p "$WORK/good" "$WORK/bad" "$WORK/gone"
     : >"$WORK/good/server.jar"
     : >"$WORK/bad/server.jar"
+    : >"$WORK/gone/server.jar"
     : >"$WORK/bad/stubborn"
     NOW="2026-01-01T00:00:00Z"
     cat >"$DATA/servers.json" <<SEED
 [
   {"id":"$GOOD","name":"good","dir":"$WORK/good","minecraftVersion":"1.21.4","port":25565,"minRam":"1G","maxRam":"1G","autoStart":true,"createdAt":"$NOW","updatedAt":"$NOW"},
-  {"id":"$BAD","name":"bad","dir":"$WORK/bad","minecraftVersion":"1.21.4","port":25566,"minRam":"1G","maxRam":"1G","autoStart":true,"createdAt":"$NOW","updatedAt":"$NOW"}
+  {"id":"$BAD","name":"bad","dir":"$WORK/bad","minecraftVersion":"1.21.4","port":25566,"minRam":"1G","maxRam":"1G","autoStart":true,"createdAt":"$NOW","updatedAt":"$NOW"},
+  {"id":"$GONE","name":"gone","dir":"$WORK/gone","minecraftVersion":"1.21.4","port":25567,"minRam":"1G","maxRam":"1G","createdAt":"$NOW","updatedAt":"$NOW"}
 ]
 SEED
 
@@ -243,11 +250,11 @@ SEED
       [ "$i" -gt 50 ] && fail "daemon did not come back up"
       sleep 0.2
     done
-    for sid in "$GOOD" "$BAD"; do
+    for sid in "$GOOD" "$BAD" "$GONE"; do
       expect_status 202 "start fake server $sid" POST "/v1/servers/$sid/start" -H "$AUTH"
     done
     i=0
-    until [ -s "$WORK/good/pid" ] && [ -s "$WORK/bad/pid" ]; do
+    until [ -s "$WORK/good/pid" ] && [ -s "$WORK/bad/pid" ] && [ -s "$WORK/gone/pid" ]; do
       i=$((i + 1))
       [ "$i" -gt 50 ] && fail "fake servers did not start"
       sleep 0.2
@@ -280,6 +287,21 @@ SEED
     rm -f "$WORK/good/saved"
     if kill -0 "$OLD_PID" 2>/dev/null; then fail "the old server process survived the restart"; fi
     echo "ok   restart replaces the server process after a clean stop"
+
+    # Deleting a running server answers at once; the server stops first and is
+    # removed when its process is gone.
+    GONE_PID="$(cat "$WORK/gone/pid")"
+    expect_status 202 "delete a running server" DELETE "/v1/servers/$GONE" -H "$AUTH"
+    i=0
+    until [ "$(status GET "/v1/servers/$GONE" -H "$AUTH")" = "404" ]; do
+      i=$((i + 1))
+      [ "$i" -gt 100 ] && fail "the running server was never deleted"
+      sleep 0.2
+    done
+    if kill -0 "$GONE_PID" 2>/dev/null; then fail "the deleted server is still running"; fi
+    [ ! -e "$WORK/gone" ] || fail "the files of the deleted server are still there"
+    echo "ok   a running server is stopped, then deleted with its files"
+    expect_status 404 "delete of a server that is gone" DELETE "/v1/servers/$GONE" -H "$AUTH"
 
     GOOD_PID="$(cat "$WORK/good/pid")"
     BAD_PID="$(cat "$WORK/bad/pid")"

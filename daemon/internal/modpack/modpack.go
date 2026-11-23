@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,8 +41,57 @@ type Result struct {
 	ModCount         int
 }
 
+// MrpackHost is where Modrinth serves .mrpack files from.
+const MrpackHost = "cdn.modrinth.com"
+
+// FileHosts are the hosts a .mrpack may download its files from: the list the
+// Modrinth pack format defines. Modrinth rejects packs that point elsewhere.
+var FileHosts = []string{MrpackHost, "github.com", "raw.githubusercontent.com", "gitlab.com"}
+
+// plainHTTPSHost returns the host of a plain https URL (default port, no
+// credentials), or "" for anything else.
+func plainHTTPSHost(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" || u.Opaque != "" {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+// ValidMrpackURL reports whether raw may be deployed from. The daemon downloads
+// that URL, and only Modrinth is supported, so only its CDN is accepted: a
+// create request must not be a way to make the host fetch an arbitrary address.
+func ValidMrpackURL(raw string) bool { return plainHTTPSHost(raw) == MrpackHost }
+
+// allowedFileURL reports whether a file listed in a pack may come from raw.
+func allowedFileURL(raw string) bool {
+	host := plainHTTPSHost(raw)
+	if host == "" {
+		return false
+	}
+	for _, h := range FileHosts {
+		if host == h {
+			return true
+		}
+	}
+	return false
+}
+
+// pickDownload returns the first URL on an allowed host, or "".
+func pickDownload(urls []string) string {
+	for _, u := range urls {
+		if allowedFileURL(u) {
+			return u
+		}
+	}
+	return ""
+}
+
 // Apply downloads and installs a .mrpack into serverDir.
 func Apply(serverDir, mrpackURL, javaPath string, emit func(string)) (Result, error) {
+	if !ValidMrpackURL(mrpackURL) {
+		return Result{}, fmt.Errorf("modpacks can only be downloaded from https://%s", MrpackHost)
+	}
 	mrpackPath := filepath.Join(serverDir, "modpack.mrpack")
 	emit("Downloading modpack index (.mrpack)...")
 	if err := httpx.Download(mrpackURL, mrpackPath); err != nil {
@@ -93,8 +143,14 @@ func Apply(serverDir, mrpackURL, javaPath string, emit func(string)) (Result, er
 			emit("Skipping path escaping server directory: " + f.Path)
 			continue
 		}
+		// The pack names where each file comes from; only the hosts the pack
+		// format allows are fetched.
+		source := pickDownload(f.Downloads)
+		if source == "" {
+			return Result{}, fmt.Errorf("modpack file %s is not hosted on an allowed site (%s)", f.Path, strings.Join(FileHosts, ", "))
+		}
 		emit(fmt.Sprintf("  [%d/%d] %s", i+1, len(files), f.Path))
-		if err := httpx.Download(f.Downloads[0], dest); err != nil {
+		if err := httpx.Download(source, dest); err != nil {
 			return Result{}, err
 		}
 		if strings.HasPrefix(f.Path, "mods/") {

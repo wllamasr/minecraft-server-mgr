@@ -99,9 +99,11 @@ restarted the same way the **Restart** button does it. Players get a chat messag
 
 **Quitting the app stops your servers.** Local servers run as part of the app, so when you quit
 while servers are running, the app stops each of them the same way **Stop** does and closes once
-they are down. With a large world this can take a while: on Windows and Linux the window closes first and the
-app keeps running in the background until the servers have saved, so wait a moment before
-opening it again. Servers on a remote host are not affected: they keep running
+they are down. With a large world this can take up to two minutes: the window stays open and
+shows "Stopping N servers…" until they have saved, then the app closes by itself. The same
+happens when Windows shuts down, restarts or logs you off: the app asks Windows to wait for the
+servers. Windows shows the app as preventing the shutdown and lets you force it; forcing it cuts
+the servers off, so wait if you can. Servers on a remote host are not affected: they keep running
 when you quit the app, and are stopped cleanly when the `msmd` service on that host is stopped.
 
 ## 5. The live console

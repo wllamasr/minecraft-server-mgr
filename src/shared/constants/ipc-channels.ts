@@ -35,6 +35,7 @@ export const IPC_CHANNELS = {
   APP_WINDOW_MINIMIZE: 'app:window-minimize',
   APP_WINDOW_MAXIMIZE: 'app:window-maximize',
   APP_WINDOW_CLOSE: 'app:window-close',
+  APP_SHUTDOWN_PENDING: 'app:shutdown-pending',
   APP_INSTALL_UPDATE: 'app:install-update'
 } as const
 
@@ -44,5 +45,6 @@ export const IPC_EVENTS = {
   SERVER_STATUS_CHANGED: 'event:server-status-changed',
   SERVER_METRICS: 'event:server-metrics',
   DOWNLOAD_PROGRESS: 'event:download-progress',
-  APP_UPDATE_DOWNLOADED: 'event:app-update-downloaded'
+  APP_UPDATE_DOWNLOADED: 'event:app-update-downloaded',
+  APP_SHUTTING_DOWN: 'event:app-shutting-down'
 } as const

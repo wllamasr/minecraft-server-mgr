@@ -140,8 +140,14 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
-	if err := s.mgr.Delete(r.PathValue("id")); err != nil {
+	pending, err := s.mgr.RequestDelete(r.PathValue("id"))
+	if err != nil {
 		writeStoreError(w, err)
+		return
+	}
+	if pending {
+		// It is running: it stops first and is removed once its process is gone.
+		writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

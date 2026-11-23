@@ -9,6 +9,10 @@ import { installModLoader } from './mod-loader-installer'
 import {
   resolveModpackLoader,
   isUnsafeModpackPath,
+  isAllowedMrpackUrl,
+  pickModpackDownload,
+  MRPACK_HOST,
+  MODPACK_FILE_HOSTS,
   type MrpackDependencies
 } from '../../shared/utils/modpack'
 import { formatProgress } from '../../shared/utils/format'
@@ -55,6 +59,9 @@ export async function applyModpack(
   mrpackUrl: string,
   emit: Emit
 ): Promise<ApplyModpackResult> {
+  if (!isAllowedMrpackUrl(mrpackUrl)) {
+    throw new Error(`Modpacks can only be downloaded from https://${MRPACK_HOST}`)
+  }
   const mrpackPath = join(serverDir, 'modpack.mrpack')
 
   emit('Downloading modpack index (.mrpack)...')
@@ -111,9 +118,18 @@ export async function applyModpack(
       continue
     }
 
+    // The pack names where each file comes from; only the hosts the Modrinth
+    // pack format allows are fetched.
+    const downloadUrl = pickModpackDownload(file.downloads)
+    if (!downloadUrl) {
+      throw new Error(
+        `Modpack file ${file.path} is not hosted on an allowed site (${MODPACK_FILE_HOSTS.join(', ')})`
+      )
+    }
+
     mkdirSync(dirname(dest), { recursive: true })
     emit(`  [${i + 1}/${files.length}] ${file.path}`)
-    await downloadFile(file.downloads[0], dest)
+    await downloadFile(downloadUrl, dest)
 
     if (file.path.startsWith('mods/')) {
       const fileName = file.path.replace(/^mods\//, '')

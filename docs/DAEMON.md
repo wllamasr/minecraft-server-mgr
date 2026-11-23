@@ -217,7 +217,7 @@ operate and debug; it is a **v2** option, not needed for the MVP.
 | `GET` | `/v1/servers/{id}` | Get one server + status. |
 | `POST` | `/v1/servers/{id}/start` \| `/stop` \| `/restart` | Lifecycle. |
 | `PATCH` | `/v1/servers/{id}` | Change settings (`restartSchedule`). |
-| `DELETE` | `/v1/servers/{id}` | Delete. |
+| `DELETE` | `/v1/servers/{id}` | Delete. `204` when done; `202` for a running server, which stops first and is then removed. |
 | `GET`/`PUT` | `/v1/servers/{id}/properties` | Read/write `server.properties`. |
 | `POST` | `/v1/servers/{id}/command` | Send a console command. |
 | `GET` | `/v1/servers/{id}/logs` | Historical log buffer. |

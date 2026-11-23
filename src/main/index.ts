@@ -1,10 +1,10 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, powerMonitor } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerIpcHandlers } from './ipc'
 import { runMigrations } from './database/migrate'
 import { initializeAutoUpdater } from './services/auto-updater'
-import { hasRunningServers, stopAllServers } from './services/server-manager'
+import { holdExitForServers } from './services/app-shutdown'
 import { startRestartScheduler } from './services/restart-scheduler'
 import { isSafeExternalUrl } from '../shared/utils/url'
 import log from './utils/logger'
@@ -30,6 +30,18 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
+
+  // Closing the window quits the app (except on macOS). With servers running
+  // the window stays open, showing that they are being stopped, and the app
+  // quits by itself when they are down.
+  if (process.platform !== 'darwin') {
+    mainWindow.on('close', (event) => holdExitForServers(event, 'Window closed'))
+  }
+
+  // Windows is shutting down, restarting or logging the user off. Ask it to
+  // wait and tell the servers to stop at once: the user can still force the
+  // shutdown after a few seconds, so there is no time to lose.
+  mainWindow.on('query-session-end', (event) => holdExitForServers(event, 'Windows session ending'))
 
   // Links never open inside the app: web links go to the user's browser and
   // anything else is dropped.
@@ -101,6 +113,15 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // Linux or macOS shutting down or rebooting: preventDefault asks the system
+  // for the time to exit cleanly. (powerMonitor is only usable once the app is
+  // ready; Windows announces the end of the session to the window instead.)
+  if (process.platform !== 'win32') {
+    powerMonitor.on('shutdown', ((event?: { preventDefault: () => void }) => {
+      holdExitForServers(event ?? { preventDefault: () => undefined }, 'System shutting down')
+    }) as () => void)
+  }
+
   createWindow()
 
   app.on('activate', function () {
@@ -114,18 +135,6 @@ app.on('window-all-closed', () => {
   }
 })
 
-// Servers are child processes of the app: quitting without stopping them would
-// leave them running with no console attached, or cut them off mid-save. So
-// hold the quit until every server has shut down.
-let serversStopped = false
-app.on('before-quit', (event) => {
-  if (serversStopped || !hasRunningServers()) return
-  event.preventDefault()
-  log.info('[App] Quit requested with servers running — stopping them first')
-  void stopAllServers()
-    .catch((err) => log.error('[App] Failed to stop servers before quitting:', err))
-    .finally(() => {
-      serversStopped = true
-      app.quit()
-    })
-})
+// Quitting waits for the running servers to shut down (see app-shutdown.ts).
+app.on('before-quit', (event) => holdExitForServers(event, 'Quit requested'))
+

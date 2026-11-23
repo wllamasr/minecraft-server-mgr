@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { TitleBar } from '../components/layout/TitleBar'
 import { Sidebar } from '../components/layout/Sidebar'
 import { StatusBar } from '../components/layout/StatusBar'
+import { ShutdownOverlay } from '../components/layout/ShutdownOverlay'
 
 export const Route = createRootRoute({
   component: RootLayout
@@ -58,6 +59,7 @@ function RootLayout() {
         </Box>
       </Box>
       <StatusBar />
+      <ShutdownOverlay />
     </Box>
   )
 }

@@ -34,6 +34,9 @@ on the host:
   min above max, an unknown `jvmProfile`, or a malformed `modLoaderVersion`.
 - **Modpacks.** Deploy a Modrinth `.mrpack` (pass its URL): the daemon installs
   the exact loader it pins, downloads the server files, and applies overrides.
+  The URL must be `https://cdn.modrinth.com/...` (anything else is a 400), and a
+  pack's files are only fetched from `cdn.modrinth.com`, `github.com`,
+  `raw.githubusercontent.com` and `gitlab.com`.
 - **Security.** TLS with a self-signed cert (pinned by the manager, TOFU) and
   **bearer-token** auth. Get/rotate the token with `msmd auth`.
 

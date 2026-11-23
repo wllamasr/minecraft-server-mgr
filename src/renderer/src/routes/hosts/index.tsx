@@ -289,7 +289,11 @@ function HostDetail({ host }: { host: RemoteHost }) {
                 </ActionIcon>
               </Tooltip>
               <ActionIcon variant="light" color="red"
-                onClick={() => action(window.api.deleteRemoteServer(host.id, s.id), 'Deleted')}>
+                onClick={() => action(
+                  window.api.deleteRemoteServer(host.id, s.id),
+                  // A running server is stopped first and disappears from the list once it is down.
+                  s.status === 'stopped' || s.status === 'crashed' ? 'Deleted' : 'Stopping the server, then deleting it'
+                )}>
                 <IconTrash size={16} />
               </ActionIcon>
             </Group>

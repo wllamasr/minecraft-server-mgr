@@ -1,7 +1,7 @@
 import { autoUpdater } from 'electron-updater'
 import { BrowserWindow, ipcMain } from 'electron'
 import { IPC_EVENTS, IPC_CHANNELS } from '../../shared/constants'
-import { stopAllServers } from './server-manager'
+import { stopServersForExit } from './app-shutdown'
 import log from '../utils/logger'
 
 export function initializeAutoUpdater(): void {
@@ -40,7 +40,7 @@ export function initializeAutoUpdater(): void {
     log.info('[AutoUpdater] User requested install. Quitting and installing...')
     // quitAndInstall launches the installer right away, and the installer does
     // not wait for anyone: servers must be down before it starts.
-    await stopAllServers()
+    await stopServersForExit('Update install requested')
     autoUpdater.quitAndInstall(false, true)
   })
 }

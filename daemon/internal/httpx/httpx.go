@@ -10,12 +10,15 @@ package httpx
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/version"
 )
 
 func newClient(timeout time.Duration) *http.Client {
@@ -28,12 +31,26 @@ func newClient(timeout time.Duration) *http.Client {
 		IdleConnTimeout:     90 * time.Second,
 		TLSHandshakeTimeout: 20 * time.Second,
 	}
-	return &http.Client{Timeout: timeout, Transport: tr}
+	return &http.Client{Timeout: timeout, Transport: tr, CheckRedirect: checkRedirect}
 }
 
-// UserAgent identifies the daemon to the APIs it calls. PaperMC asks clients to
-// send a descriptive value; it names the public project, never the host.
-const UserAgent = "msmd (+https://github.com/wllamasr/minecraft-server-mgr)"
+// checkRedirect follows redirects as the default client does (at most ten),
+// except from https to plain http: a download that started encrypted must not
+// end up fetched in the clear.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	if via[0].URL.Scheme == "https" && req.URL.Scheme != "https" {
+		return fmt.Errorf("refusing redirect from https to %s://%s", req.URL.Scheme, req.URL.Host)
+	}
+	return nil
+}
+
+// UserAgent identifies the daemon to the APIs it calls. PaperMC and Modrinth
+// ask clients for a descriptive value instead of a generic one, so it carries
+// the project name and the daemon version. It names no person or host.
+const UserAgent = "minecraft-server-mgr-msmd/" + version.Version
 
 func get(timeout time.Duration, url string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)

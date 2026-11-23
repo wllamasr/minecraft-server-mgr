@@ -24,6 +24,7 @@ import { isReleaseVersion } from '../../shared/utils/minecraft-version'
 import { isValidBuildId } from '../../shared/utils/server-software'
 import { formatProgress } from '../../shared/utils/format'
 import { isValidRestartSchedule } from '../../shared/utils/restart-schedule'
+import { isAllowedMrpackUrl, MRPACK_HOST } from '../../shared/utils/modpack'
 import type {
   ServerInstance,
   ServerWithStatus,
@@ -484,9 +485,9 @@ export function isShuttingDown(): boolean {
   return shuttingDown
 }
 
-/** True while at least one server process is alive. */
-export function hasRunningServers(): boolean {
-  return runningServers.size > 0
+/** How many server processes are alive. */
+export function runningServerCount(): number {
+  return runningServers.size
 }
 
 /**
@@ -672,6 +673,10 @@ function validateCreateInput(input: CreateServerInput): void {
   // Loader versions are interpolated into download URLs and installer arguments.
   if (input.modLoaderVersion !== undefined && !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$/.test(String(input.modLoaderVersion))) {
     throw new Error(`Invalid engine version: ${String(input.modLoaderVersion)}`)
+  }
+  // The .mrpack URL is downloaded as given, so it must be a Modrinth one.
+  if (input.modpack && !isAllowedMrpackUrl(input.modpack.mrpackUrl)) {
+    throw new Error(`Modpacks can only be downloaded from https://${MRPACK_HOST}`)
   }
   if (!input.modpack && isPluginPlatform(input.modLoader)) {
     if (!isReleaseVersion(input.minecraftVersion)) {

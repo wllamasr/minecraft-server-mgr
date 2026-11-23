@@ -1,6 +1,6 @@
-import { app } from 'electron'
 import type { ModSearchOptions, ModSearchResponse, UnifiedMod, UnifiedModVersion } from '../../shared/types/mod.types'
 import log from '../utils/logger'
+import { USER_AGENT } from '../utils/http'
 
 /** Modrinth category tags that name a loader/platform rather than a content category. */
 const MODRINTH_LOADER_TAGS = ['fabric', 'forge', 'quilt', 'neoforge', 'paper', 'purpur', 'folia', 'spigot', 'bukkit']
@@ -9,8 +9,6 @@ import { isPluginPlatform, modrinthCompatibleLoaders } from '../../shared/consta
 
 const API_BASE = 'https://api.modrinth.com/v2'
 
-/** Use a compliant User-Agent as requested by Modrinth docs */
-const USER_AGENT = `wllamasr/minecraft-server-manager/${app.getVersion()} (github.com/wllamasr/minecraft-server-mgr)`
 
 // ─── API Types ─────────────────────────────────────────────
 interface ModrinthSearchHit {

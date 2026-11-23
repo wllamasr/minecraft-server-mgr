@@ -163,6 +163,18 @@ const api = {
     return () => ipcRenderer.removeListener(IPC_EVENTS.SERVER_STATUS_CHANGED, handler)
   },
 
+  /** Servers the app is waiting for before it closes; 0 when it is not closing. */
+  shutdownPending: (): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.APP_SHUTDOWN_PENDING),
+
+  /** The app is closing and first stops this many running servers. */
+  onShuttingDown: (callback: (serverCount: number) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, serverCount: number) => callback(serverCount)
+    ipcRenderer.on(IPC_EVENTS.APP_SHUTTING_DOWN, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_EVENTS.APP_SHUTTING_DOWN, handler)
+    }
+  },
+
   onUpdateDownloaded: (callback: (version: string) => void) => {
     const handler = (_e: Electron.IpcRendererEvent, version: string) => callback(version)
     ipcRenderer.on(IPC_EVENTS.APP_UPDATE_DOWNLOADED, handler)

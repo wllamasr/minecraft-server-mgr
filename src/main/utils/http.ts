@@ -1,13 +1,14 @@
+import { app } from 'electron'
 import https from 'https'
 import http from 'http'
 import type { IncomingMessage } from 'http'
 
 /**
- * Identifies the app to the APIs it calls. PaperMC asks clients to send a
- * descriptive User-Agent so they can reach the maintainers about misbehaving
- * clients; the value only names the public project, never the user.
+ * Identifies the app to the APIs it calls. PaperMC and Modrinth ask clients
+ * for a descriptive User-Agent instead of a generic one, so it carries the
+ * project name and the app version. It names no person, account or machine.
  */
-export const USER_AGENT = 'MinecraftServerManager (+https://github.com/wllamasr/minecraft-server-mgr)'
+export const USER_AGENT = `minecraft-server-mgr/${app.getVersion()}`
 
 const MAX_REDIRECTS = 5
 const TIMEOUT_MS = 20000

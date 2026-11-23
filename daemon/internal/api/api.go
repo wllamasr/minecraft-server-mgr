@@ -9,10 +9,11 @@ import (
 
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/config"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/server"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/version"
 )
 
 // AgentVersion is the daemon version reported by /v1/info.
-const AgentVersion = "0.1.0"
+const AgentVersion = version.Version
 
 // Server wires the manager and configuration to HTTP handlers.
 type Server struct {

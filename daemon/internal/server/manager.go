@@ -20,6 +20,7 @@ import (
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/java"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/jvm"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/modpack"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/schedule"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/software"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
@@ -105,6 +106,8 @@ type Manager struct {
 	// deleting marks servers that are being removed: they must not be started
 	// (by a restart in flight, say) or have their record written back.
 	deleting map[string]bool
+	// deletes counts the deletions still finishing in the background.
+	deletes sync.WaitGroup
 	// restarting marks servers with a restart in flight; a second request
 	// joins the first instead of stopping the server again.
 	restarting map[string]bool
@@ -201,6 +204,10 @@ func (m *Manager) Create(in CreateInput) (store.Server, error) {
 		if !engineVersionPattern.MatchString(in.ModLoaderVersion) {
 			return store.Server{}, fmt.Errorf("invalid modLoaderVersion: %s", in.ModLoaderVersion)
 		}
+	}
+	// The .mrpack URL is downloaded as given, so it must be a Modrinth one.
+	if in.Modpack != nil && in.Modpack.MrpackURL != "" && !modpack.ValidMrpackURL(in.Modpack.MrpackURL) {
+		return store.Server{}, fmt.Errorf("modpack.mrpackUrl must be an https URL on %s", modpack.MrpackHost)
 	}
 	if (in.Modpack == nil || in.Modpack.MrpackURL == "") && software.Valid(in.ModLoader) {
 		if !software.IsReleaseVersion(in.MinecraftVersion) {
@@ -372,6 +379,11 @@ func (m *Manager) Stop(id string) error {
 	if err != nil {
 		return err
 	}
+	return m.awaitStop(id, rs, first)
+}
+
+// awaitStop waits until a server that beginStop marked as stopping is gone.
+func (m *Manager) awaitStop(id string, rs *runningServer, first bool) error {
 	if !first {
 		// Another caller is driving the stop: share its outcome.
 		select {
@@ -484,20 +496,67 @@ func (m *Manager) cancelRestartLocked(id string) {
 	}
 }
 
-// Delete stops (if running) and removes a server and its files.
-func (m *Manager) Delete(id string) error {
+// RequestDelete removes a server and its files. A server that is not running
+// is gone when it returns. A running one is told to stop and pending is true:
+// it is "stopping" now and disappears once its process has exited, which can
+// take minutes, far longer than an API call should block. Asking again while
+// that is under way changes nothing.
+func (m *Manager) RequestDelete(id string) (pending bool, err error) {
+	if _, err := m.store.Get(id); err != nil {
+		return false, err
+	}
+
 	m.mu.Lock()
+	if m.deleting[id] {
+		m.mu.Unlock()
+		return true, nil
+	}
 	m.deleting[id] = true
 	running := m.running[id] != nil
+	if running {
+		m.deletes.Add(1)
+	}
 	m.mu.Unlock()
+
+	if !running {
+		return false, m.remove(id)
+	}
+
+	rs, first, err := m.beginStop(id)
+	if err != nil {
+		// It exited on its own in the meantime.
+		defer m.deletes.Done()
+		return false, m.remove(id)
+	}
+	go func() {
+		defer m.deletes.Done()
+		if err := m.awaitStop(id, rs, first); err != nil {
+			// Its files are still in use: keep the server so it can be dealt with.
+			m.mu.Lock()
+			delete(m.deleting, id)
+			m.mu.Unlock()
+			m.hub.PushLog(id, "Delete failed: "+err.Error(), "ERROR")
+			return
+		}
+		if err := m.remove(id); err != nil {
+			m.hub.PushLog(id, "Delete failed: "+err.Error(), "ERROR")
+		}
+	}()
+	return true, nil
+}
+
+// WaitDeletes blocks until the deletions running in the background are done.
+// The daemon calls it on shutdown, after StopAll, so none is cut off halfway.
+func (m *Manager) WaitDeletes() { m.deletes.Wait() }
+
+// remove deletes the record and the files of a server whose process is gone,
+// and lifts its "deleting" mark whatever the outcome.
+func (m *Manager) remove(id string) error {
 	defer func() {
 		m.mu.Lock()
 		delete(m.deleting, id)
 		m.mu.Unlock()
 	}()
-	if running {
-		_ = m.Stop(id)
-	}
 
 	s, err := m.store.Get(id)
 	if err != nil {

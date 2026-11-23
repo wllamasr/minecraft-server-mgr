@@ -105,7 +105,7 @@ paths:
                     source: { type: string, example: modrinth }
                     projectId: { type: string }
                     versionId: { type: string }
-                    mrpackUrl: { type: string }
+                    mrpackUrl: { type: string, description: "https URL of the .mrpack on cdn.modrinth.com" }
                     name: { type: string }
       responses:
         "201": { description: Created }
@@ -140,7 +140,15 @@ paths:
         "404": { description: Unknown server }
     delete:
       summary: Delete a server
-      responses: { "204": { description: Deleted } }
+      description: >-
+        Removes the server and its files. A server that is not running is gone when the call
+        returns (204). A running one is told to stop first (202): it is in status "stopping"
+        and disappears once its process has exited, shortly after the stop grace period at the latest. Watch for
+        GET to answer 404. If it cannot be stopped it is kept, and its log says so. (Older
+        daemons answered only once the server had stopped.)
+      responses:
+        "204": { description: Deleted }
+        "202": { description: Accepted; the server is stopping and will then be deleted }
   /v1/servers/{id}/start:
     post: { summary: Start a server, responses: { "202": { description: Accepted } } }
   /v1/servers/{id}/stop:

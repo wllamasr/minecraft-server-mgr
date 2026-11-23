@@ -81,25 +81,42 @@ All notable changes to this project are documented here. The format follows
   an arbitrary directory. Loaders are installed by the main process during server creation.
 - Downloads follow at most 5 redirects, refuse https-to-http downgrades, detect truncated
   bodies, and delete partial files on failure.
+- Modpack downloads are restricted, in the app and in the daemon. The `.mrpack` itself must be an
+  `https` URL on `cdn.modrinth.com`; anything else is refused when the server is created (HTTP 400
+  from `POST /v1/servers`), so a create request can no longer make the machine fetch an arbitrary
+  address. The files a pack lists are only downloaded from the hosts the Modrinth pack format
+  allows (`cdn.modrinth.com`, `github.com`, `raw.githubusercontent.com`, `gitlab.com`), over
+  `https`; a pack with a file hosted elsewhere fails to deploy.
+- The daemon refuses redirects from `https` to plain `http` on all its downloads.
 
 ### Changed
 
+- Closing the app while servers are running no longer hides the window during the wait. The
+  window stays open with a "Stopping N servers…" screen and the app closes by itself once they
+  are down. Opening the app again during that time brings this window to the front.
+- Windows shutdown, restart and log-off: the app asks Windows to wait and tells its servers to
+  stop at once, instead of being cut off with the servers running. Windows still lets the user
+  force the shutdown. On Linux and macOS the app does the same when the system shuts down.
+- Daemon: `DELETE /v1/servers/{id}` on a running server answers `202` at once. The server stops
+  first and is removed once its process is gone (watch for `GET` to answer 404). A server that is
+  not running is still deleted before the call returns (`204`). A daemon that is shut down in
+  the middle of such a delete finishes it before it exits.
 - Downloaded server jars are verified against the checksum the project publishes: SHA-256 for
   Paper and Folia, MD5 for Purpur (Purpur only publishes MD5), SHA-1 for the vanilla jar from
   Mojang. On a mismatch the file is deleted and provisioning fails.
 - `server:create` now validates its input in the main process (name, version, RAM format such as
   `4G` or `4096M`, min RAM not above max RAM, known engine, known JVM profile, and a build number
   for plugin platforms).
-- The app sends a descriptive `User-Agent` (`MinecraftServerManager (+https://github.com/wllamasr/minecraft-server-mgr)`)
-  to the metadata APIs it calls.
+- The app sends a descriptive `User-Agent` (`minecraft-server-mgr/<app version>`) to the APIs it
+  calls: the project name and version, with no account name or URL in it.
 - Daemon: `POST /v1/servers` now validates its input and answers HTTP 400 for a bad `minRam` or
   `maxRam` format (`4G`, `4096M`), min RAM above max RAM, an unknown `jvmProfile`, or a malformed
   `modLoaderVersion`.
 - When only one of `minRam` / `maxRam` is given and it crosses the other's default, the other
   bound follows it (for example `maxRam: 512M` alone gives `minRam: 512M`), locally and on remote
   hosts.
-- The daemon sends `User-Agent: msmd (+https://github.com/wllamasr/minecraft-server-mgr)` on its
-  outgoing requests.
+- The daemon sends `User-Agent: minecraft-server-mgr-msmd/<daemon version>` on its outgoing
+  requests.
 - Only one instance of the app can run at a time; launching it again focuses the open window.
 - The daemon smoke test (`make smoke`) now asserts on every check, is portable (Linux and
   Windows), and covers wrong-token and TLS-only cases.
@@ -123,6 +140,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Deleting a running server on a remote host reported "Daemon request timed out" when the server
+  took more than 30 seconds to stop, although the daemon did delete it.
+- The window's close button did nothing when the window was not the focused one.
 - Quitting the app (or stopping `msmd`) left running servers behind as orphaned Java processes
   with no console attached. They are now shut down cleanly first.
 - A stop that had to kill the server returned before the process was gone, so an immediate

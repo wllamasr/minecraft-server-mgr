@@ -85,7 +85,10 @@ control.
   `stopped`, never `crashed`, whatever its exit code.
 - **FR-12a** Quitting the app with servers running stops all of them (FR-12) before the app
   exits, cancels pending auto-restarts, and starts no server from then on. With no server
-  running, quitting is immediate.
+  running, quitting is immediate. This covers every way out: closing the window (where that
+  quits the app), quitting, installing an update, the end of the Windows session (shutdown,
+  restart, log-off; the app asks Windows to wait) and a system shutdown on Linux and macOS.
+  While it waits, the window stays open and shows how many servers are being stopped.
 - **FR-12b** When **auto-restart** is enabled, a server that exits with a non-zero code
   (a crash, not an intentional stop) is restarted after a short delay, up to 3 times per
   minute before giving up, with each attempt logged to the console. Stopping, starting or
@@ -142,7 +145,10 @@ control.
 - **FR-22b** Deploying a `.mrpack` provisions the server with the exact Minecraft
   version and loader the pack pins, downloads the pack's server-relevant files,
   and applies the pack's config overrides. Client-only files are skipped, and any
-  path that would escape the server directory is rejected (zip-slip safe).
+  path that would escape the server directory is rejected (zip-slip safe). The
+  `.mrpack` must be an `https` URL on `cdn.modrinth.com`, and the files it lists are
+  only fetched over `https` from `cdn.modrinth.com`, `github.com`,
+  `raw.githubusercontent.com` or `gitlab.com` (the hosts of the Modrinth pack format).
 - **FR-22c** The server records the modpack it was deployed from (source, project,
   version) so the pack can later be updated.
 - *Deferred:* CurseForge modpack deploy and in-app "update to a newer pack version"
