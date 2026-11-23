@@ -129,6 +129,10 @@ calls use the server's `plugins/` folder, and only `modrinth` is accepted.
 | `remoteServerLogs(hostId, serverId)`                 | `hosts:logs`               | `{ hostId, serverId }`           | `ServerLogEntry[]`       |
 | `remoteLoaderVersions(hostId, loader, mcVersion)`    | `hosts:loader-versions`    | `{ hostId, loader, mcVersion }`  | `{ version, stable }[]`  |
 | `remoteSoftwareVersions(hostId, platform)`           | `hosts:software-versions`  | `{ hostId, platform }`           | `string[]`               |
+| `listRemoteBackups(hostId, serverId)`                | `hosts:backups`            | `{ hostId, serverId }`           | `BackupInfo[]`           |
+| `createRemoteBackup(hostId, serverId)`               | `hosts:backup-create`      | `{ hostId, serverId }`           | `{ operationId }` (returns once msmd accepted it) |
+| `restoreRemoteBackup(hostId, serverId, backupId, backupFirst?)` | `hosts:backup-restore` | `{ hostId, serverId, backupId, backupFirst }` | `{ operationId }` (returns once msmd accepted it) |
+| `deleteRemoteBackup(hostId, serverId, backupId)`     | `hosts:backup-delete`      | `{ hostId, serverId, backupId }` | `void`                   |
 
 `remoteSoftwareVersions` asks the host's `msmd` daemon (`GET /v1/software/{platform}/versions`) for
 the Minecraft release versions the platform has builds for, newest first; `platform` is
@@ -139,6 +143,19 @@ A host running an older `msmd` has no `/v1/software` endpoint and rejects the ne
 `hosts:software-versions` and such deployments fail until the daemon is updated; an older daemon
 silently ignores `jvmProfile`. Plugin installation and management are local-only; remote hosts have no
 mod or plugin browser.
+
+**Remote backups** are made, kept and restored by `msmd` on the host; nothing is transferred to
+the app. `createRemoteBackup` and `restoreRemoteBackup` only start the operation and resolve with
+its id. There is no progress event: `RemoteServer.operation` (`{ id, kind, phase, doneBytes,
+totalBytes }`, `phase` is `saving`, `copying` or `replacing`) is present while one runs, and
+`RemoteServer.lastOperation` (`{ id, kind, ok, cancelled?, error?, warning?, backupId?,
+finishedAt }`) tells how the last one ended; compare its `id` with the one returned. Poll
+`listRemoteServers` to follow it. `lastOperation` is kept in the daemon's memory and is gone
+after msmd restarts. `backupFirst` defaults to `true`. Errors carry the daemon's own sentence
+(`Stop the server before restoring a backup`, `backup not found`); a host with msmd older than
+0.2.0 rejects all four with the "older msmd" message. `backupId` must look like a backup id
+(`YYYYMMDD-HHMMSS-manual|pre-restore|scheduled`), anything else is rejected before a request is
+made.
 
 ## App & window
 

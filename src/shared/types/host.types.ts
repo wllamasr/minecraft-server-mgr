@@ -36,6 +36,35 @@ export interface RemoteServer {
   modpackName?: string
   /** Daily restart time "HH:MM" in the host's time zone; absent when not scheduled. */
   restartSchedule?: string
+  /** The backup or restore in flight, if any. Absent on daemons without backups. */
+  operation?: RemoteOperation
+  /** How the last backup or restore ended, if one ran since the daemon started. */
+  lastOperation?: RemoteOperationResult
+}
+
+/** A backup or a restore running on a remote host. */
+export interface RemoteOperation {
+  id: string
+  kind: 'backup' | 'restore'
+  /** `saving`: waiting for the running server to write the world to disk. */
+  phase: 'saving' | 'copying' | 'replacing'
+  doneBytes: number
+  totalBytes: number
+}
+
+/** How a backup or a restore on a remote host ended. */
+export interface RemoteOperationResult {
+  id: string
+  kind: 'backup' | 'restore'
+  ok: boolean
+  /** It was dropped because the server was stopped, restarted or deleted, or the daemon shut down. */
+  cancelled?: boolean
+  error?: string
+  /** It went through, but left something for the user to do. */
+  warning?: string
+  /** The backup that was made or restored. */
+  backupId?: string
+  finishedAt: string
 }
 
 export interface AddHostInput {

@@ -127,6 +127,12 @@ expect_status 400 "unknown JVM profile" POST /v1/servers -H "$AUTH" -H "$JSON" \
 expect_status 400 "unknown server software" GET /v1/software/spigot/versions -H "$AUTH"
 expect_status 400 "paper builds for a malformed version" GET "/v1/loaders/paper/versions?mc=abc" -H "$AUTH"
 expect_status 401 "software versions without a token" GET /v1/software/paper/versions
+expect_status 401 "backups without a token" GET /v1/servers/does-not-exist/backups
+expect_status 401 "backup without a token" POST /v1/servers/does-not-exist/backups
+expect_status 404 "backups of an unknown server" GET /v1/servers/does-not-exist/backups -H "$AUTH"
+expect_status 404 "backup of an unknown server" POST /v1/servers/does-not-exist/backups -H "$AUTH"
+expect_status 404 "restore on an unknown server" POST /v1/servers/does-not-exist/backups/20260101-000000-manual/restore -H "$AUTH"
+expect_status 404 "delete of a backup of an unknown server" DELETE /v1/servers/does-not-exist/backups/20260101-000000-manual -H "$AUTH"
 SERVERS="$(curl -sk -H "$AUTH" "$BASE/v1/servers")"
 [ "$(printf '%s' "$SERVERS" | tr -d ' \n\r')" = "[]" ] || fail "rejected requests must not create servers, got: $SERVERS"
 echo "ok   rejected requests created nothing"
@@ -218,17 +224,26 @@ if [ -f stubborn ]; then
   while :; do sleep 1; done
 fi
 while read -r line; do
-  if [ "$line" = "stop" ]; then
-    : >saved
-    exit 0
-  fi
+  case "$line" in
+    save-off) echo "[12:00:00] [Server thread/INFO]: Automatic saving is now disabled" ;;
+    "save-all flush") echo "[12:00:00] [Server thread/INFO]: Saved the game" ;;
+    save-on) : >saving-on ;;
+    stop)
+      : >saved
+      exit 0
+      ;;
+  esac
 done
 FAKE
     chmod +x "$FAKEJAVA"
     GOOD="00000000000000000000000000000001"
     BAD="00000000000000000000000000000002"
     GONE="00000000000000000000000000000003"
-    mkdir -p "$WORK/good" "$WORK/bad" "$WORK/gone"
+    COLD="00000000000000000000000000000004"
+    mkdir -p "$WORK/good" "$WORK/bad" "$WORK/gone" "$WORK/cold/world" "$WORK/cold/logs"
+    : >"$WORK/cold/server.jar"
+    echo "LEVEL-1" >"$WORK/cold/world/level.dat"
+    echo "log" >"$WORK/cold/logs/latest.log"
     : >"$WORK/good/server.jar"
     : >"$WORK/bad/server.jar"
     : >"$WORK/gone/server.jar"
@@ -238,7 +253,8 @@ FAKE
 [
   {"id":"$GOOD","name":"good","dir":"$WORK/good","minecraftVersion":"1.21.4","port":25565,"minRam":"1G","maxRam":"1G","autoStart":true,"createdAt":"$NOW","updatedAt":"$NOW"},
   {"id":"$BAD","name":"bad","dir":"$WORK/bad","minecraftVersion":"1.21.4","port":25566,"minRam":"1G","maxRam":"1G","autoStart":true,"createdAt":"$NOW","updatedAt":"$NOW"},
-  {"id":"$GONE","name":"gone","dir":"$WORK/gone","minecraftVersion":"1.21.4","port":25567,"minRam":"1G","maxRam":"1G","createdAt":"$NOW","updatedAt":"$NOW"}
+  {"id":"$GONE","name":"gone","dir":"$WORK/gone","minecraftVersion":"1.21.4","port":25567,"minRam":"1G","maxRam":"1G","createdAt":"$NOW","updatedAt":"$NOW"},
+  {"id":"$COLD","name":"cold","dir":"$WORK/cold","minecraftVersion":"1.21.4","port":25568,"minRam":"1G","maxRam":"1G","createdAt":"$NOW","updatedAt":"$NOW"}
 ]
 SEED
 
@@ -302,6 +318,75 @@ SEED
     [ ! -e "$WORK/gone" ] || fail "the files of the deleted server are still there"
     echo "ok   a running server is stopped, then deleted with its files"
     expect_status 404 "delete of a server that is gone" DELETE "/v1/servers/$GONE" -H "$AUTH"
+
+    # Backups. A stopped server: back up, change the files, restore.
+    # wait_operation <server> <operation> <kind> <label>
+    wait_operation() {
+      i=0
+      while :; do
+        VIEW="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$1")"
+        case "$VIEW" in *"\"lastOperation\":{\"id\":\"$2\""*) break ;; esac
+        i=$((i + 1))
+        [ "$i" -gt 100 ] && fail "$4 never finished: $VIEW"
+        sleep 0.2
+      done
+      case "$VIEW" in
+        *"\"lastOperation\":{\"id\":\"$2\",\"kind\":\"$3\",\"ok\":true"*) echo "ok   $4" ;;
+        *) fail "$4 failed: $VIEW" ;;
+      esac
+    }
+    operation_id() { printf '%s' "$1" | sed -n 's/.*"operationId":"\([0-9a-f]*\)".*/\1/p'; }
+    backup_id() { printf '%s' "$1" | sed -n 's/.*"id":"\([0-9]\{8\}-[0-9]\{6\}-manual\)".*/\1/p'; }
+
+    STARTED="$(curl -sk -X POST -H "$AUTH" "$BASE/v1/servers/$COLD/backups")"
+    OP="$(operation_id "$STARTED")"
+    [ -n "$OP" ] || fail "starting a backup did not return an operation id: $STARTED"
+    wait_operation "$COLD" "$OP" backup "backup of a stopped server"
+    LIST="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$COLD/backups")"
+    BID="$(backup_id "$LIST")"
+    [ -n "$BID" ] || fail "the backup is not listed: $LIST"
+    expect_contains "the backup says the server was stopped" '"whileRunning":false' "$LIST"
+    expect_contains "the backup left the logs out" '"fileCount":2' "$LIST"
+    [ -f "$DATA/backups/$COLD/$BID.zip" ] || fail "the archive is not in the backups folder"
+
+    echo "LEVEL-2" >"$WORK/cold/world/level.dat"
+    echo "extra" >"$WORK/cold/world/extra.dat"
+    expect_status 400 "restore with a malformed backup id" POST "/v1/servers/$COLD/backups/..%2F$BID/restore" -H "$AUTH"
+    expect_status 404 "restore of a backup that does not exist" POST "/v1/servers/$COLD/backups/20200101-000000-manual/restore" -H "$AUTH"
+    expect_status 400 "restore with a malformed body" POST "/v1/servers/$COLD/backups/$BID/restore" -H "$AUTH" -H "$JSON" -d '{'
+    STARTED="$(curl -sk -X POST -H "$AUTH" "$BASE/v1/servers/$COLD/backups/$BID/restore")"
+    OP="$(operation_id "$STARTED")"
+    [ -n "$OP" ] || fail "starting a restore did not return an operation id: $STARTED"
+    wait_operation "$COLD" "$OP" restore "restore of a stopped server"
+    [ "$(cat "$WORK/cold/world/level.dat")" = "LEVEL-1" ] || fail "the restore did not bring the file back"
+    [ ! -e "$WORK/cold/world/extra.dat" ] || fail "a file that is not in the backup survived the restore"
+    [ "$(cat "$WORK/cold/logs/latest.log")" = "log" ] || fail "the restore touched the logs"
+    if [ -e "$WORK/cold.restore-stage" ] || [ -e "$WORK/cold.restore-aside" ]; then fail "the restore left folders behind"; fi
+    echo "ok   the restore replaced the files and left the logs alone"
+    expect_contains "the restore backed the current files up first" '-pre-restore"' "$(curl -sk -H "$AUTH" "$BASE/v1/servers/$COLD/backups")"
+    expect_status 204 "delete a backup" DELETE "/v1/servers/$COLD/backups/$BID" -H "$AUTH"
+    expect_status 404 "delete a backup that is gone" DELETE "/v1/servers/$COLD/backups/$BID" -H "$AUTH"
+    expect_status 400 "delete with a malformed backup id" DELETE "/v1/servers/$COLD/backups/nope" -H "$AUTH"
+
+    # A running server: saving is paused for the copy and turned back on.
+    STARTED="$(curl -sk -X POST -H "$AUTH" "$BASE/v1/servers/$GOOD/backups")"
+    OP="$(operation_id "$STARTED")"
+    [ -n "$OP" ] || fail "starting a backup of a running server did not return an operation id: $STARTED"
+    wait_operation "$GOOD" "$OP" backup "backup of a running server"
+    LIST="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$GOOD/backups")"
+    expect_contains "the backup says the server was running" '"whileRunning":true' "$LIST"
+    i=0
+    until [ -f "$WORK/good/saving-on" ]; do
+      i=$((i + 1))
+      [ "$i" -gt 50 ] && fail "saving was not turned back on after the backup"
+      sleep 0.2
+    done
+    echo "ok   saving is turned back on after the backup"
+    expect_status 409 "restore onto a running server" POST "/v1/servers/$GOOD/backups/$(backup_id "$LIST")/restore" -H "$AUTH"
+    # Deleting a server takes its backups along.
+    expect_status 204 "delete the stopped server" DELETE "/v1/servers/$COLD" -H "$AUTH"
+    [ ! -e "$DATA/backups/$COLD" ] || fail "the backups of the deleted server are still there"
+    echo "ok   deleting a server deletes its backups"
 
     GOOD_PID="$(cat "$WORK/good/pid")"
     BAD_PID="$(cat "$WORK/bad/pid")"

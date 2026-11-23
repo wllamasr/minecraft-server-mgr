@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: msmd — Minecraft Server Manager daemon
-  version: 0.1.0
+  version: 0.2.0
   description: >
     HTTP + Server-Sent-Events API for managing Minecraft servers on a remote
     host. All endpoints are served over TLS. Every route except /v1/health and
@@ -113,6 +113,12 @@ paths:
   /v1/servers/{id}:
     get:
       summary: Get a server
+      description: >-
+        Besides its settings and status, a server carries "operation" while a backup or a restore
+        of it is running ({id, kind: backup|restore, phase: saving|copying|replacing, doneBytes,
+        totalBytes}) and "lastOperation" once one has ended ({id, kind, ok, cancelled, error,
+        warning, backupId, finishedAt}). lastOperation is kept in memory: it is gone after the
+        daemon restarts. Both are omitted when there is nothing to report.
       responses: { "200": { description: OK }, "404": { description: Not found } }
     patch:
       summary: Change settings of a server
@@ -141,7 +147,8 @@ paths:
     delete:
       summary: Delete a server
       description: >-
-        Removes the server and its files. A server that is not running is gone when the call
+        Removes the server, its files and its backups. A backup or restore in progress is
+        cancelled first (a restore that is already replacing files is finished). A server that is not running is gone when the call
         returns (204). A running one is told to stop first (202): it is in status "stopping"
         and disappears once its process has exited, shortly after the stop grace period at the latest. Watch for
         GET to answer 404. If it cannot be stopped it is kept, and its log says so. (Older
@@ -150,7 +157,11 @@ paths:
         "204": { description: Deleted }
         "202": { description: Accepted; the server is stopping and will then be deleted }
   /v1/servers/{id}/start:
-    post: { summary: Start a server, responses: { "202": { description: Accepted } } }
+    post:
+      summary: Start a server
+      responses:
+        "202": { description: Accepted }
+        "409": { description: "A backup or a restore of the server is in progress, or a restore left a .restore-aside folder next to it" }
   /v1/servers/{id}/stop:
     post:
       summary: Stop a server
@@ -171,6 +182,71 @@ paths:
         "202": { description: Accepted }
         "400": { description: The server is still being provisioned, or the daemon is shutting down }
         "404": { description: Unknown server }
+  /v1/servers/{id}/backups:
+    get:
+      summary: List the backups of a server, newest first
+      responses:
+        "200":
+          description: >-
+            JSON array of {id, serverId, kind: manual|pre-restore, createdAt, sizeBytes,
+            fileCount, minecraftVersion, whileRunning}. The last three come from the manifest in
+            the archive and are omitted when it cannot be read.
+        "404": { description: Unknown server }
+    post:
+      summary: Start a backup
+      description: >-
+        Returns at once with the id of the operation; follow it in the server's "operation" and
+        read the outcome in its "lastOperation" (same id). The backup is a zip of the server
+        folder in <data>/backups/<server id>/, without logs, crash-reports, debug, cache,
+        libraries, versions, modpack.mrpack and session.lock; links are skipped. A running server
+        is sent save-off and save-all flush and must confirm both before the copy starts, and
+        save-on afterwards. Stopping, restarting or deleting the server, or shutting the daemon
+        down, cancels the backup.
+      responses:
+        "202": { description: 'Accepted: {"ok": true, "operationId": "..."}' }
+        "404": { description: Unknown server }
+        "409":
+          description: >-
+            Not now: another backup or a restore is running, or the server is starting, stopping,
+            restarting, being provisioned or deleted, or the daemon is shutting down
+  /v1/servers/{id}/backups/{backupId}:
+    delete:
+      summary: Delete a backup
+      responses:
+        "204": { description: Deleted }
+        "400": { description: Malformed backup id }
+        "404": { description: Unknown server ("server not found") or backup ("backup not found") }
+        "409": { description: A backup of this server is being restored }
+  /v1/servers/{id}/backups/{backupId}/restore:
+    post:
+      summary: Restore a backup onto a stopped server
+      description: >-
+        Returns at once with the id of the operation, like starting a backup. The archive is
+        unpacked next to the server and checked first: an archive without the manifest this
+        daemon writes, with a path outside the server folder, a link, an entry backups do not
+        cover, or more data or another number of files than its manifest says is refused and
+        nothing changes. Then the entries backups cover are swapped for the unpacked ones (what
+        backups do not cover, such as logs and libraries, stays); if the swap fails everything is
+        moved back. Until the swap starts, deleting the server or shutting the daemon down
+        cancels the restore; once it has started it is finished first. If the replaced files
+        cannot be removed afterwards the restore still counts as done, with a "warning" naming
+        the folder (<server dir>.restore-aside); the server does not start while it exists.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                backupFirst:
+                  type: boolean
+                  default: true
+                  description: Back the current files up first (kind "pre-restore"), so the restore can be undone.
+      responses:
+        "202": { description: 'Accepted: {"ok": true, "operationId": "..."}' }
+        "400": { description: Malformed backup id or body }
+        "404": { description: Unknown server ("server not found") or backup ("backup not found") }
+        "409": { description: The server is running, or another operation is in progress (see POST backups) }
   /v1/servers/{id}/command:
     post:
       summary: Send a console command

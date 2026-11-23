@@ -1,5 +1,6 @@
 import { isPluginPlatform } from '../../shared/constants'
 import { isValidRestartSchedule } from '../../shared/utils/restart-schedule'
+import { isBackupId, isOlderDaemonError, OLDER_DAEMON_MESSAGE, plainDaemonMessage } from '../../shared/utils/daemon-errors'
 import { safeStorage } from 'electron'
 import { v4 as uuid } from 'uuid'
 import { eq } from 'drizzle-orm'
@@ -10,7 +11,8 @@ import type {
   HostInfo,
   RemoteServer,
   AddHostInput,
-  CreateRemoteServerInput
+  CreateRemoteServerInput,
+  BackupInfo
 } from '../../shared/types'
 import log from '../utils/logger'
 
@@ -125,10 +127,7 @@ export function stopRemoteServer(hostId: string, serverId: string): Promise<void
  */
 function explainOlderDaemon(err: unknown): never {
   const message = err instanceof Error ? err.message : String(err)
-  const unknownRoute = /^Daemon HTTP 405\b/.test(message) || (/^Daemon HTTP 404\b/.test(message) && !/server not found/.test(message))
-  if (unknownRoute) {
-    throw new Error('This host runs an older msmd that does not support this. Update msmd on the host and try again.')
-  }
+  if (isOlderDaemonError(message)) throw new Error(OLDER_DAEMON_MESSAGE)
   throw err
 }
 
@@ -186,4 +185,55 @@ export function remoteLoaderVersions(
 export function remoteSoftwareVersions(hostId: string, platform: string): Promise<string[]> {
   if (!isPluginPlatform(platform)) return Promise.reject(new Error('Unknown server software'))
   return remoteRequest<string[]>(connFor(hostId), 'GET', `/v1/software/${platform}/versions`)
+}
+
+// ─── backups (made, kept and restored on the host) ─────────
+
+function backupsPath(serverId: string, backupId?: string): string {
+  if (typeof serverId !== 'string' || !serverId) throw new Error('Invalid server')
+  const base = `/v1/servers/${encodeURIComponent(serverId)}/backups`
+  if (backupId === undefined) return base
+  // Ids end up in the request path: only what a backup id looks like is sent.
+  if (!isBackupId(backupId)) throw new Error('Invalid backup')
+  return `${base}/${backupId}`
+}
+
+/** Tell the answer of a daemon apart from "this route does not exist there". */
+function plainDaemonError(err: unknown): never {
+  throw new Error(plainDaemonMessage(err instanceof Error ? err.message : String(err)))
+}
+
+/** Backups of a remote server, newest first. */
+export async function listRemoteBackups(hostId: string, serverId: string): Promise<BackupInfo[]> {
+  const list = await remoteRequest<BackupInfo[]>(connFor(hostId), 'GET', backupsPath(serverId)).catch(plainDaemonError)
+  return Array.isArray(list) ? list : []
+}
+
+/**
+ * Start a backup on the host. It answers at once; the server's `operation`
+ * shows the progress and its `lastOperation`, with the returned id, the outcome.
+ */
+export async function createRemoteBackup(hostId: string, serverId: string): Promise<{ operationId: string }> {
+  const res = await remoteRequest<{ operationId: string }>(connFor(hostId), 'POST', backupsPath(serverId)).catch(plainDaemonError)
+  return { operationId: res.operationId }
+}
+
+/** Start replacing a stopped remote server's files with one of its backups. */
+export async function restoreRemoteBackup(
+  hostId: string,
+  serverId: string,
+  backupId: string,
+  backupFirst = true
+): Promise<{ operationId: string }> {
+  const res = await remoteRequest<{ operationId: string }>(
+    connFor(hostId),
+    'POST',
+    `${backupsPath(serverId, backupId)}/restore`,
+    { backupFirst: backupFirst !== false }
+  ).catch(plainDaemonError)
+  return { operationId: res.operationId }
+}
+
+export async function deleteRemoteBackup(hostId: string, serverId: string, backupId: string): Promise<void> {
+  await remoteRequest(connFor(hostId), 'DELETE', backupsPath(serverId, backupId)).catch(plainDaemonError)
 }

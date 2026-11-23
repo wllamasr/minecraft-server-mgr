@@ -149,6 +149,21 @@ const api = {
   /** Minecraft versions a plugin platform (paper, purpur, folia) has builds for on a remote host. */
   remoteSoftwareVersions: (hostId: string, platform: 'paper' | 'purpur' | 'folia'): Promise<string[]> =>
     ipcRenderer.invoke('hosts:software-versions', { hostId, platform }),
+  /** Backups of a remote server, newest first. They live on the host. */
+  listRemoteBackups: (hostId: string, serverId: string): Promise<BackupInfo[]> =>
+    ipcRenderer.invoke('hosts:backups', { hostId, serverId }),
+  /** Starts a backup on the host; the server's `lastOperation` with this id tells how it ended. */
+  createRemoteBackup: (hostId: string, serverId: string): Promise<{ operationId: string }> =>
+    ipcRenderer.invoke('hosts:backup-create', { hostId, serverId }),
+  restoreRemoteBackup: (
+    hostId: string,
+    serverId: string,
+    backupId: string,
+    backupFirst = true
+  ): Promise<{ operationId: string }> =>
+    ipcRenderer.invoke('hosts:backup-restore', { hostId, serverId, backupId, backupFirst }),
+  deleteRemoteBackup: (hostId: string, serverId: string, backupId: string): Promise<void> =>
+    ipcRenderer.invoke('hosts:backup-delete', { hostId, serverId, backupId }),
 
   // ─── App / Window ─────────────────────────────────────
   getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),

@@ -5,7 +5,7 @@ import {
 } from '@mantine/core'
 import {
   IconServer, IconPlus, IconTrash, IconPlayerPlay, IconPlayerStop,
-  IconTerminal2, IconRefresh, IconPlugConnected, IconDownload, IconClock
+  IconTerminal2, IconRefresh, IconPlugConnected, IconDownload, IconClock, IconArchive
 } from '@tabler/icons-react'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -14,6 +14,8 @@ import { notifications } from '@mantine/notifications'
 import type { RemoteHost, RemoteServer, HostInfo } from '@shared/types'
 import { isValidRestartSchedule } from '@shared/utils/restart-schedule'
 import { engineLabel, isPluginPlatform } from '@shared/constants'
+import { modals } from '@mantine/modals'
+import { RemoteBackupsModal } from '../../components/hosts/RemoteBackupsModal'
 
 export const Route = createFileRoute('/hosts/')({
   component: HostsPage
@@ -185,6 +187,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
   const [deployOpen, deployHandlers] = useDisclosure(false)
   const [consoleServer, setConsoleServer] = useState<RemoteServer | null>(null)
   const [scheduleServer, setScheduleServer] = useState<RemoteServer | null>(null)
+  const [backupsServerId, setBackupsServerId] = useState<string | null>(null)
 
   const { data: info } = useQuery({
     queryKey: ['host-info', host.id],
@@ -204,6 +207,30 @@ function HostDetail({ host }: { host: RemoteHost }) {
   const action = (fn: Promise<void>, ok: string) =>
     fn.then(() => { notifications.show({ color: 'blue', message: ok }); invalidate() })
       .catch((e: Error) => notifications.show({ color: 'red', message: e.message }))
+
+  // The live server, so the backups window follows its status and progress.
+  const backupsServer = servers.find((s) => s.id === backupsServerId) ?? null
+
+  const confirmDelete = (s: RemoteServer): void => {
+    const running = ['running', 'starting', 'stopping'].includes(s.status)
+    modals.openConfirmModal({
+      title: `Delete ${s.name}?`,
+      children: (
+        <Text size="sm">
+          The server, its world and its backups on {host.name} are deleted. This cannot be undone.
+          {running ? ' The server is stopped first.' : ''}
+        </Text>
+      ),
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () =>
+        action(
+          window.api.deleteRemoteServer(host.id, s.id),
+          // A running server is stopped first and disappears from the list once it is down.
+          running ? 'Stopping the server, then deleting it' : 'Deleted'
+        )
+    })
+  }
 
   return (
     <Stack gap="md">
@@ -254,6 +281,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
                 <Text size="xs" c="dark.2">
                   {engineLabel(s.modLoader)} · MC {s.minecraftVersion} · Port {s.port} · {s.maxRam}
                   {s.restartSchedule ? ` · restarts daily at ${s.restartSchedule}` : ''}
+                  {s.operation ? ` · ${s.operation.kind === 'backup' ? 'backing up' : 'restoring a backup'}…` : ''}
                 </Text>
               </Box>
               <Badge size="sm" variant="light" color={statusColor(s.status).split('.')[0]}>{s.status}</Badge>
@@ -288,14 +316,17 @@ function HostDetail({ host }: { host: RemoteHost }) {
                   <IconClock size={16} />
                 </ActionIcon>
               </Tooltip>
-              <ActionIcon variant="light" color="red"
-                onClick={() => action(
-                  window.api.deleteRemoteServer(host.id, s.id),
-                  // A running server is stopped first and disappears from the list once it is down.
-                  ['running', 'starting', 'stopping'].includes(s.status) ? 'Stopping the server, then deleting it' : 'Deleted'
-                )}>
-                <IconTrash size={16} />
-              </ActionIcon>
+              <Tooltip label="Backups">
+                <ActionIcon variant="light" aria-label="Backups" color={s.operation ? 'blue' : 'gray'}
+                  onClick={() => setBackupsServerId(s.id)}>
+                  <IconArchive size={16} />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label="Delete">
+                <ActionIcon variant="light" color="red" aria-label="Delete server" onClick={() => confirmDelete(s)}>
+                  <IconTrash size={16} />
+                </ActionIcon>
+              </Tooltip>
             </Group>
           </Group>
         </Card>
@@ -308,6 +339,12 @@ function HostDetail({ host }: { host: RemoteHost }) {
       <DeployRemoteModal host={host} opened={deployOpen} onClose={deployHandlers.close} onDone={invalidate} />
       {consoleServer && (
         <RemoteConsoleModal host={host} server={consoleServer} onClose={() => setConsoleServer(null)} />
+      )}
+      {backupsServer && (
+        <RemoteBackupsModal
+          host={host} server={backupsServer}
+          onClose={() => setBackupsServerId(null)} onRefresh={invalidate}
+        />
       )}
       {scheduleServer && (
         <RemoteScheduleModal

@@ -140,7 +140,8 @@ Things to know:
   world or a bad change, not against a failed disk; copy the zip files somewhere else for that.
 - Stopping or restarting the server, or closing the app, cancels a backup that is in progress.
 - Deleting a server deletes its backups.
-- Backups are for local servers. Servers on remote hosts do not have them yet.
+- Servers on remote hosts have backups too, with some differences: see
+  [Backups on a remote host](#backups-on-a-remote-host).
 
 #### Scheduled backups
 
@@ -211,6 +212,31 @@ Each server on a remote host has a **Restart** button while it runs and a clock 
 is on the host's clock (the dialog shows the host's time zone, which on a VPS is often UTC), and
 the restart is carried out by `msmd` on the host, so it happens even when this app is closed. A
 host with an older `msmd` answers that it needs an update.
+
+#### Backups on a remote host
+
+Each server on a remote host has a **Backups** button (the archive icon). It opens a window with
+**Back up now**, the list of backups, **Restore** and **Delete**, which work as described under
+[Backups](#backups) for local servers, with these differences:
+
+- The backup is made by `msmd` on the host and **stays on the host**, in `backups/<server id>/`
+  under msmd's data folder. It is not copied to this computer. To keep a copy somewhere else,
+  copy the `.zip` files from the host yourself.
+- A backup or a restore keeps running when you close the window or the app. Open the window
+  again to see the progress, or how the last one ended. (msmd forgets the outcome when it is
+  restarted; the list of backups always shows what is there.)
+- Stopping or restarting the server cancels a backup in progress, and so does stopping `msmd`.
+  A restore that has started replacing files is always finished first.
+- **There are no scheduled backups on remote hosts yet**, and nothing deletes old backups for
+  you. Each backup is about the size of the world: delete the ones you no longer need.
+- Deleting the server deletes its backups on the host. The app asks before deleting.
+- The host needs `msmd` 0.2.0 or newer. With an older one the window says that msmd must be
+  updated.
+
+If a restore fails, the server's files are put back as they were. In the rare case that this is
+not possible, the message names a folder ending in `.restore-aside` next to the server folder
+**on the host**: it holds the files that were being replaced, and the server will not start
+until that folder has been removed there.
 
 ### Running a large server
 

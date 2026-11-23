@@ -26,7 +26,7 @@ All notable changes to this project are documented here. The format follows
   - Stopping, restarting or deleting a server, or closing the app, cancels a backup in progress.
     A server cannot be started while a backup of it (stopped) or a restore is in progress.
   - Deleting a server deletes its backups too; the confirmation says so.
-  - Not included yet: backups of servers on remote hosts.
+  - Servers on remote hosts have their own backups, made and kept on the host (see below).
 - **Scheduled backups** for local servers, in the same tab: back a server up every day at a fixed
   time and keep only the last N scheduled backups (7 by default).
   - Only scheduled backups are deleted automatically, and only after a new one is complete.
@@ -41,6 +41,33 @@ All notable changes to this project are documented here. The format follows
     minutes, instead of cancelling it.
   - The tab shows how the last scheduled backup went (made, skipped, missed or failed, and why),
     and follows backups it did not start itself: progress, the list and the buttons update.
+- **Backups for servers on remote hosts.** Each server on the Remote Hosts page has a
+  **Backups** button: **Back up now**, the list, **Restore** and **Delete**. The host needs
+  `msmd` 0.2.0 or newer; with an older one the window says that msmd must be updated.
+  - The work is done by `msmd` on the host, and the archives stay on the host, in
+    `backups/<server id>/` under msmd's data folder (`MSMD_BACKUPS_ROOT` to put them elsewhere).
+    They are not downloaded to this computer. Deleting a server deletes its backups; deleting a
+    remote server now asks for confirmation and says so.
+  - Same rules as local backups: the same files are left out, a running server has its world
+    saving paused for the copy (`save-off`, `save-all flush`, `save-on`) and the backup fails if
+    the server does not confirm, a restore needs the server stopped, unpacks and checks the whole
+    archive before touching the server, backs the current files up first by default, and puts
+    everything back if the swap fails.
+  - Stopping, restarting or deleting the server cancels a backup in progress, and so does
+    stopping `msmd`. A restore that is already replacing files is finished first. A server
+    cannot be started while a backup of it (stopped) or a restore is running.
+  - A backup or restore keeps running when the app is closed; the window shows the progress and,
+    when opened later, how the last one ended (until `msmd` is restarted).
+  - Not included yet: scheduled backups and automatic deletion of old backups on remote hosts.
+    Remote backups are only made when you ask, and are never deleted for you.
+- `msmd` 0.2.0: `GET`/`POST /v1/servers/{id}/backups`,
+  `DELETE /v1/servers/{id}/backups/{backupId}` and
+  `POST /v1/servers/{id}/backups/{backupId}/restore`; server objects carry `operation` and
+  `lastOperation`. Requests that are valid but cannot be carried out in the server's current
+  state (restore onto a running server, start during a restore) answer `409`.
+  See [daemon/api/openapi.yaml](daemon/api/openapi.yaml).
+- IPC channels `hosts:backups`, `hosts:backup-create`, `hosts:backup-restore` and
+  `hosts:backup-delete`.
 - IPC channels `backup:list`, `backup:create`, `backup:delete`, `backup:restore` and the event
   `event:backup-progress`; `server:update-settings` accepts `backupSchedule` and `backupKeep`.
   See [docs/IPC.md](docs/IPC.md).

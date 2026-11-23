@@ -12,7 +12,8 @@ mods, configuration, runtime lifecycle, and live diagnostics.
 Managing servers on **remote hosts** through the `msmd` daemon is an additive, early-stage
 capability specified separately in [DAEMON.md](DAEMON.md); this document covers local servers.
 Remote hosts support Paper, Purpur, Folia and the JVM profile too (the host needs an up-to-date
-`msmd`); plugin management through the app is local-only.
+`msmd`); plugin management through the app is local-only. Backups on remote hosts are covered
+by FR-13h.
 
 Out of scope: Bedrock edition, proxy networks (BungeeCord/Velocity), and multi-user access
 control.
@@ -155,6 +156,16 @@ control.
   server as changed, so the next scheduled backup is not skipped.
 - **FR-13g** A scheduled restart that comes due while a backup is running waits for the backup,
   for at most 15 minutes, and then restarts (cancelling the backup if it is still running).
+- **FR-13h** A server on a **remote host** can be backed up and restored on demand. The daemon
+  does the work and keeps the archives on the host (`<data>/backups/<server id>/`); they are not
+  transferred to the app. FR-13a to FR-13d apply (same coverage, the same save pause for a
+  running server, the same validation, staging and rollback on restore, one operation per server,
+  cancellation on stop, restart, delete and daemon shutdown), with these differences: the
+  operation is asynchronous (the request returns an operation id; the server object reports the
+  operation in flight and how the last one ended, the latter only until the daemon restarts), it
+  does not depend on the app staying open, and a restore that has begun replacing files is not
+  cancelled but waited for. Scheduled backups and retention (FR-13e, FR-13f) do not exist on
+  remote hosts.
 
 ### 4.3 Java resolution
 

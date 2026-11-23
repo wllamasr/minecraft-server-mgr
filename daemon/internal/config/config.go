@@ -29,6 +29,7 @@ type Config struct {
 	Addr        string // listen address, e.g. ":8443"
 	DataDir     string // base directory for state (certs, token, db, servers)
 	ServersRoot string // where server instances live
+	BackupsRoot string // where backups are kept, one folder per server
 	CertPath    string
 	KeyPath     string
 	TokenPath   string
@@ -57,6 +58,7 @@ func Load(addr, dataDir string) (Config, error) {
 		Addr:        addr,
 		DataDir:     abs,
 		ServersRoot: envOr("MSMD_SERVERS_ROOT", filepath.Join(abs, "servers")),
+		BackupsRoot: envOr("MSMD_BACKUPS_ROOT", filepath.Join(abs, "backups")),
 		CertPath:    filepath.Join(abs, "cert.pem"),
 		KeyPath:     filepath.Join(abs, "key.pem"),
 		TokenPath:   filepath.Join(abs, "token"),
@@ -75,9 +77,9 @@ func Load(addr, dataDir string) (Config, error) {
 	return cfg, nil
 }
 
-// EnsureDirs creates the data, servers, and JDK directories.
+// EnsureDirs creates the data, servers, backups, and JDK directories.
 func (c Config) EnsureDirs() error {
-	for _, d := range []string{c.DataDir, c.ServersRoot, c.JavaDir} {
+	for _, d := range []string{c.DataDir, c.ServersRoot, c.BackupsRoot, c.JavaDir} {
 		if err := os.MkdirAll(d, 0o750); err != nil {
 			return err
 		}

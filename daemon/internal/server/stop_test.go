@@ -41,6 +41,8 @@ func runFakeServer(mode string) {
 			}
 		}
 		os.Exit(0)
+	case "minecraft": // answers the save commands (see backup_test.go)
+		runFakeMinecraft()
 	case "ignore": // a hung server: never reacts to anything
 		time.Sleep(fakeLifetime)
 	case "crash":
@@ -335,7 +337,7 @@ func newRealManager(t *testing.T) *Manager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := NewManager(config.Config{ServersRoot: dir, JavaPath: selfPath(t), StopGrace: 10 * time.Second}, st, console.New())
+	m := NewManager(config.Config{ServersRoot: dir, BackupsRoot: filepath.Join(dir, "backups"), JavaPath: selfPath(t), StopGrace: 10 * time.Second}, st, console.New())
 	t.Cleanup(m.StopAll)
 	return m
 }

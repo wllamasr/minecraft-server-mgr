@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/config"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/console"
@@ -138,5 +139,123 @@ func TestCreateRejectsUnknownLoader(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("unknown-loader status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func do(t *testing.T, method, url, body string) (*http.Response, string) {
+	t.Helper()
+	req, _ := http.NewRequest(method, url, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	return resp, string(out)
+}
+
+func TestBackupRoutes(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Config{
+		ServersRoot: filepath.Join(dir, "servers"),
+		BackupsRoot: filepath.Join(dir, "backups"),
+		StorePath:   filepath.Join(dir, "servers.json"),
+		JavaPath:    "java",
+	}
+	serverDir := filepath.Join(cfg.ServersRoot, "one")
+	if err := os.MkdirAll(filepath.Join(serverDir, "world"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(serverDir, "world", "level.dat"), []byte("LEVEL"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(cfg.StorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Put(store.Server{ID: "one", Name: "one", Dir: serverDir, MinecraftVersion: "1.21.4"}); err != nil {
+		t.Fatal(err)
+	}
+	mgr := server.NewManager(cfg, st, console.New())
+	ts := httptest.NewServer(New(cfg, mgr, testToken, "fpr").Handler())
+	defer ts.Close()
+	base := ts.URL + "/v1/servers/"
+
+	for _, c := range []struct {
+		method, path string
+		want         int
+		contains     string
+	}{
+		{"GET", "nope/backups", 404, "server not found"},
+		{"POST", "nope/backups", 404, "server not found"},
+		{"DELETE", "nope/backups/20260101-000000-manual", 404, "server not found"},
+		{"POST", "nope/backups/20260101-000000-manual/restore", 404, "server not found"},
+		{"GET", "one/backups", 200, "[]"},
+		{"DELETE", "one/backups/20260101-000000-manual", 404, "backup not found"},
+		{"POST", "one/backups/20260101-000000-manual/restore", 404, "backup not found"},
+		{"DELETE", "one/backups/20260101-000000-other", 400, "invalid backup id"},
+		{"DELETE", "one/backups/..%2F..%2Fservers.json", 400, "invalid backup id"},
+		{"POST", "one/backups/..%2Fx/restore", 400, "invalid backup id"},
+	} {
+		resp, body := do(t, c.method, base+c.path, "")
+		if resp.StatusCode != c.want || !strings.Contains(body, c.contains) {
+			t.Errorf("%s %s = %d %s, want %d %q", c.method, c.path, resp.StatusCode, body, c.want, c.contains)
+		}
+	}
+	if _, err := os.Stat(cfg.StorePath); err != nil {
+		t.Fatalf("the store file is gone: %v", err)
+	}
+
+	resp, body := do(t, "POST", base+"one/backups", "")
+	if resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("create = %d %s", resp.StatusCode, body)
+	}
+	var started struct {
+		OperationID string `json:"operationId"`
+	}
+	if err := json.Unmarshal([]byte(body), &started); err != nil || started.OperationID == "" {
+		t.Fatalf("create body = %s", body)
+	}
+	var view server.View
+	for i := 0; ; i++ {
+		_, body := do(t, "GET", base+"one", "")
+		view = server.View{}
+		if err := json.Unmarshal([]byte(body), &view); err != nil {
+			t.Fatal(err)
+		}
+		if view.LastOperation != nil && view.LastOperation.ID == started.OperationID {
+			break
+		}
+		if i > 500 {
+			t.Fatalf("the backup never finished: %s", body)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !view.LastOperation.OK {
+		t.Fatalf("backup failed: %+v", view.LastOperation)
+	}
+	id := view.LastOperation.BackupID
+	if _, body := do(t, "GET", base+"one/backups", ""); !strings.Contains(body, `"id":"`+id+`"`) || !strings.Contains(body, `"whileRunning":false`) {
+		t.Fatalf("list = %s", body)
+	}
+	if resp, body := do(t, "POST", base+"one/backups/"+id+"/restore", "{"); resp.StatusCode != 400 {
+		t.Fatalf("malformed body = %d %s", resp.StatusCode, body)
+	}
+	if resp, body := do(t, "POST", base+"one/backups/"+id+"/restore", `{"backupFirst":false}`); resp.StatusCode != http.StatusAccepted {
+		t.Fatalf("restore = %d %s", resp.StatusCode, body)
+	}
+	for i := 0; ; i++ {
+		_, body := do(t, "GET", base+"one", "")
+		if strings.Contains(body, `"kind":"restore","ok":true`) && !strings.Contains(body, `"operation"`) {
+			break
+		}
+		if i > 500 {
+			t.Fatalf("the restore never finished: %s", body)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if resp, _ := do(t, "DELETE", base+"one/backups/"+id, ""); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete = %d", resp.StatusCode)
 	}
 }

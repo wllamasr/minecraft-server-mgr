@@ -74,6 +74,11 @@ type View struct {
 	store.Server
 	Status Status `json:"status"`
 	PID    int    `json:"pid,omitempty"`
+	// Operation is the backup or restore in flight, if any.
+	Operation *OperationState `json:"operation,omitempty"`
+	// LastOperation is how the last backup or restore ended, if one ran since
+	// the daemon started.
+	LastOperation *OperationResult `json:"lastOperation,omitempty"`
 }
 
 type runningServer struct {
@@ -115,12 +120,32 @@ type Manager struct {
 	schedules map[string]*schedule.State
 	// shuttingDown is set by StopAll: nothing is started or restarted after it.
 	shuttingDown bool
+
+	// starting counts the starts of each server that are between their checks
+	// and the launch of the process: a backup or restore must not slip in there.
+	starting map[string]int
+	// ops holds the backup or restore in flight of each server. A server with
+	// one is not started; stopping or deleting it cancels the operation.
+	ops map[string]*operation
+	// opsWG counts the operations in flight, for the shutdown to wait on.
+	opsWG sync.WaitGroup
+	// lastOps is how the last operation of each server ended.
+	lastOps map[string]*OperationResult
+	// watchers are told every line a server writes to its output.
+	watchers map[string][]*lineWatcher
+
+	saveOffTimeout time.Duration
+	saveAllTimeout time.Duration
 }
 
 // NewManager constructs a Manager.
 func NewManager(cfg config.Config, st *store.Store, hub *console.Hub) *Manager {
 	if cfg.StopGrace <= 0 {
 		cfg.StopGrace = config.DefaultStopGrace
+	}
+	if cfg.BackupsRoot == "" {
+		// A server folder never has a dot in its name, so this cannot be one.
+		cfg.BackupsRoot = filepath.Join(cfg.ServersRoot, ".backups")
 	}
 	return &Manager{
 		cfg:           cfg,
@@ -135,6 +160,13 @@ func NewManager(cfg config.Config, st *store.Store, hub *console.Hub) *Manager {
 		restarting:    map[string]bool{},
 		deleting:      map[string]bool{},
 		schedules:     map[string]*schedule.State{},
+
+		starting:       map[string]int{},
+		ops:            map[string]*operation{},
+		lastOps:        map[string]*OperationResult{},
+		watchers:       map[string][]*lineWatcher{},
+		saveOffTimeout: defaultSaveOffTimeout,
+		saveAllTimeout: defaultSaveAllTimeout,
 	}
 }
 
@@ -168,6 +200,14 @@ func (m *Manager) view(s store.Server) View {
 	m.mu.Lock()
 	if rs := m.running[s.ID]; rs != nil && rs.cmd.Process != nil {
 		v.PID = rs.cmd.Process.Pid
+	}
+	if op := m.ops[s.ID]; op != nil {
+		state := op.state
+		v.Operation = &state
+	}
+	if last := m.lastOps[s.ID]; last != nil {
+		result := *last
+		v.LastOperation = &result
 	}
 	m.mu.Unlock()
 	return v
@@ -284,13 +324,28 @@ func (m *Manager) Create(in CreateInput) (store.Server, error) {
 // Start launches a server process.
 func (m *Manager) Start(id string) error {
 	m.mu.Lock()
-	if m.shuttingDown {
+	for {
+		if m.shuttingDown {
+			m.mu.Unlock()
+			return errors.New("the daemon is shutting down")
+		}
+		if m.deleting[id] {
+			m.mu.Unlock()
+			return errors.New("server is being deleted")
+		}
+		op := m.ops[id]
+		if op == nil {
+			break
+		}
+		if op.committed || op.ctx.Err() == nil {
+			kind := op.state.Kind
+			m.mu.Unlock()
+			return conflictError(fmt.Sprintf("A %s of this server is in progress; start it once that is done", kind))
+		}
+		// Cancelled (by the stop of a restart, say) and on its way out.
 		m.mu.Unlock()
-		return errors.New("the daemon is shutting down")
-	}
-	if m.deleting[id] {
-		m.mu.Unlock()
-		return errors.New("server is being deleted")
+		<-op.done
+		m.mu.Lock()
 	}
 	m.cancelRestartLocked(id)
 	if _, ok := m.running[id]; ok {
@@ -301,11 +356,23 @@ func (m *Manager) Start(id string) error {
 		m.mu.Unlock()
 		return errors.New("server is still being provisioned")
 	}
+	m.starting[id]++
 	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		if m.starting[id]--; m.starting[id] <= 0 {
+			delete(m.starting, id)
+		}
+		m.mu.Unlock()
+	}()
 
 	s, err := m.store.Get(id)
 	if err != nil {
 		return err
+	}
+
+	if aside := asideDir(s); fileExists(aside) {
+		return conflictError(fmt.Sprintf("A restore left the previous files of this server in %s. Delete that folder before starting the server.", aside))
 	}
 
 	jar := filepath.Join(s.Dir, "server.jar")
@@ -346,9 +413,10 @@ func (m *Manager) launch(id string, s store.Server, cmd *exec.Cmd) error {
 
 	rs := &runningServer{cmd: cmd, stdin: stdin, status: StatusRunning, exited: make(chan struct{})}
 	m.mu.Lock()
-	if m.shuttingDown || m.deleting[id] || m.running[id] != nil {
-		// Lost a race with a shutdown, a delete or another start of this server.
-		shuttingDown, deleting := m.shuttingDown, m.deleting[id]
+	if m.shuttingDown || m.deleting[id] || m.running[id] != nil || m.ops[id] != nil {
+		// Lost a race with a shutdown, a delete, another start of this server,
+		// or a backup or restore of it.
+		shuttingDown, deleting, busy := m.shuttingDown, m.deleting[id], m.ops[id] != nil
 		m.mu.Unlock()
 		killTree(cmd)
 		_ = cmd.Wait()
@@ -357,6 +425,8 @@ func (m *Manager) launch(id string, s store.Server, cmd *exec.Cmd) error {
 			return errors.New("the daemon is shutting down")
 		case deleting:
 			return errors.New("server is being deleted")
+		case busy:
+			return conflictError("A backup or a restore of this server is in progress; start it once that is done")
 		}
 		return errors.New("server is already running")
 	}
@@ -427,10 +497,19 @@ func (m *Manager) beginStop(id string) (rs *runningServer, first bool, err error
 	first = !rs.stopping
 	rs.stopping = true
 	rs.status = StatusStopping
+	// A backup of a server that is going down would catch it writing its
+	// world; the stop wins and the backup is dropped.
+	resumeSaving := false
+	if op := m.cancelOpLocked(id, "the server is stopping"); op != nil {
+		resumeSaving = op.savePaused
+	}
 	m.mu.Unlock()
 
 	if first {
 		m.broadcast(id, StatusStopping)
+		if resumeSaving {
+			_, _ = io.WriteString(rs.stdin, "save-on\n")
+		}
 		_, _ = io.WriteString(rs.stdin, "stop\n")
 	}
 	return rs, first, nil
@@ -464,6 +543,9 @@ func (m *Manager) StopAll() {
 	for id := range m.restartTimers {
 		m.cancelRestartLocked(id)
 	}
+	for id := range m.ops {
+		m.cancelOpLocked(id, "the daemon is shutting down")
+	}
 	ids := make([]string, 0, len(m.running))
 	for id := range m.running {
 		ids = append(ids, id)
@@ -479,6 +561,9 @@ func (m *Manager) StopAll() {
 		}(id)
 	}
 	wg.Wait()
+	// Cancelled backups clean up after themselves, and a restore that was
+	// already replacing files finishes: neither is cut off halfway.
+	m.opsWG.Wait()
 }
 
 // RunningCount reports how many server processes are alive.
@@ -516,9 +601,18 @@ func (m *Manager) RequestDelete(id string) (pending bool, err error) {
 	if running {
 		m.deletes.Add(1)
 	}
+	// A backup or a restore of it is dropped, unless the restore is already
+	// replacing files: that one is waited for.
+	op := m.cancelOpLocked(id, "the server is being deleted")
 	m.mu.Unlock()
+	waitOp := func() {
+		if op != nil {
+			<-op.done
+		}
+	}
 
 	if !running {
+		waitOp()
 		return false, m.remove(id)
 	}
 
@@ -526,10 +620,12 @@ func (m *Manager) RequestDelete(id string) (pending bool, err error) {
 	if err != nil {
 		// It exited on its own in the meantime.
 		defer m.deletes.Done()
+		waitOp()
 		return false, m.remove(id)
 	}
 	go func() {
 		defer m.deletes.Done()
+		waitOp()
 		if err := m.awaitStop(id, rs, first); err != nil {
 			// Its files are still in use: keep the server so it can be dealt with.
 			m.mu.Lock()
@@ -576,9 +672,21 @@ func (m *Manager) remove(id string) error {
 		return err
 	}
 	m.hub.ClearBuffer(id)
+	m.mu.Lock()
+	delete(m.lastOps, id)
+	m.mu.Unlock()
 	if err := os.RemoveAll(s.Dir); err != nil {
 		// Non-fatal: the record is already gone.
 		m.hub.PushLog(id, "Warning: could not remove server directory: "+err.Error(), "WARN")
+	}
+	// What a restore may have left next to it, and its backups: they are of
+	// no use without the server, and the app has no other way to reach them.
+	_ = os.RemoveAll(stageDir(s))
+	_ = os.RemoveAll(asideDir(s))
+	if safeID.MatchString(id) {
+		if err := os.RemoveAll(m.backupDir(id)); err != nil {
+			m.hub.PushLog(id, "Warning: could not remove the server's backups: "+err.Error(), "WARN")
+		}
 	}
 	return nil
 }
@@ -766,6 +874,9 @@ func (m *Manager) stream(id string, r io.Reader, isErr bool) {
 			level = "ERROR"
 		}
 		m.hub.PushLog(id, line, level)
+		if !isErr {
+			m.notifyWatchers(id, line)
+		}
 	}
 }
 
@@ -777,6 +888,9 @@ func (m *Manager) waitExit(id string, rs *runningServer, s store.Server) {
 	if m.running[id] == rs {
 		delete(m.running, id)
 	}
+	// A backup that was reading the files of this process cannot vouch for
+	// them any more: the server writes its world on the way out.
+	m.cancelOpLocked(id, "the server stopped")
 	m.mu.Unlock()
 	// Tell Stop last, after the final status went out: once Stop returns, the
 	// server can be started again and its events must not trail behind.
@@ -825,14 +939,17 @@ func (m *Manager) scheduleRestart(id, name string) {
 		m.mu.Lock()
 		// A stop, delete or shutdown since then replaced or removed this timer.
 		current := m.restartTimers[id] == timer
-		if current {
+		_, running := m.running[id]
+		if current && running {
 			delete(m.restartTimers, id)
 		}
-		_, running := m.running[id]
 		m.mu.Unlock()
 		if !current || running {
 			return
 		}
+		// The entry stays until Start takes it away under the same lock
+		// that marks the server as starting: a backup must not find a gap
+		// in which the server looks idle.
 		if err := m.Start(id); err != nil {
 			m.hub.PushLog(id, "Auto-restart failed: "+err.Error(), "ERROR")
 		}

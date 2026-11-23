@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"runtime"
@@ -308,9 +309,68 @@ func sseSend(w http.ResponseWriter, v any) {
 	fmt.Fprintf(w, "data: %s\n\n", b)
 }
 
+// handleListBackups lists the backups of a server, newest first.
+func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
+	list, err := s.mgr.ListBackups(r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// handleCreateBackup starts a backup and answers at once: it can take minutes.
+// The server's "operation" shows the progress, and its "lastOperation" (with
+// the same id) the outcome.
+func (s *Server) handleCreateBackup(w http.ResponseWriter, r *http.Request) {
+	opID, err := s.mgr.RequestBackup(r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "operationId": opID})
+}
+
+func (s *Server) handleDeleteBackup(w http.ResponseWriter, r *http.Request) {
+	if err := s.mgr.DeleteBackup(r.PathValue("id"), r.PathValue("backupId")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleRestoreBackup starts replacing a stopped server's files with a backup
+// and answers at once. The current files are backed up first unless the body
+// says {"backupFirst": false}.
+func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
+	body := struct {
+		BackupFirst *bool `json:"backupFirst"`
+	}{}
+	// The body is optional.
+	if err := readJSON(r, &body); err != nil && !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	backupFirst := body.BackupFirst == nil || *body.BackupFirst
+	opID, err := s.mgr.RequestRestore(r.PathValue("id"), r.PathValue("backupId"), backupFirst)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "operationId": opID})
+}
+
 func writeStoreError(w http.ResponseWriter, err error) {
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "server not found")
+		return
+	}
+	if errors.Is(err, server.ErrBackupNotFound) {
+		writeError(w, http.StatusNotFound, "backup not found")
+		return
+	}
+	if server.IsConflict(err) {
+		writeError(w, http.StatusConflict, err.Error())
 		return
 	}
 	writeError(w, http.StatusBadRequest, err.Error())

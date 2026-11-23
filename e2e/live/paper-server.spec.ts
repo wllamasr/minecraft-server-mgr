@@ -1,9 +1,9 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, existsSync, rmSync } from 'fs'
+import { mkdtempSync, existsSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 
 /**
  * Live test: creates a real Paper server through the wizard, boots it and
@@ -220,6 +220,8 @@ test('deploys a Paper server to a remote host', async () => {
   const baseUrl = process.env.MSM_E2E_LIVE_MSMD_URL
   const token = process.env.MSM_E2E_LIVE_MSMD_TOKEN
   test.skip(!baseUrl || !token, 'Set MSM_E2E_LIVE_MSMD_URL and MSM_E2E_LIVE_MSMD_TOKEN to test a remote host')
+  // Three boots of a real server, a backup and a restore.
+  test.setTimeout(25 * 60_000)
 
   const created = await page.evaluate(
     async ({ baseUrl, token, mc, port }) => {
@@ -289,8 +291,81 @@ test('deploys a Paper server to a remote host', async () => {
       .poll(async () => ((await remote()).log.match(/Done \(\d/g) ?? []).length, { timeout: 6 * 60_000, intervals: [2000] })
       .toBe(2)
 
+    // Backups, through the window on the hosts page. First of the running
+    // server: the host pauses world saving for the copy.
+    await page.getByText('Remote Hosts', { exact: true }).first().click()
+    await page.getByText('Live host', { exact: true }).first().click()
+    await page.getByRole('button', { name: 'Backups' }).click()
+    const backups = page.getByTestId('remote-backups')
+    const rows = page.getByTestId('remote-backup-row')
+    await expect(backups.getByText('No backups yet.')).toBeVisible()
+    await backups.getByRole('button', { name: 'Back up now' }).click()
+    await expect(rows).toHaveCount(1, { timeout: 4 * 60_000 })
+    await expect(page.getByText('Backup created.')).toBeVisible({ timeout: 30_000 })
+    expect((await remote()).log).toMatch(/pausing world saving.*Automatic saving is now disabled.*Saved the game.*Backup finished: \d+ file/)
+    const listed = await page.evaluate(
+      ({ hostId, serverId }) => (window as unknown as ApiWindow).api.listRemoteBackups(hostId, serverId),
+      created
+    )
+    expect(listed).toHaveLength(1)
+    expect(listed[0].whileRunning).toBe(true)
+    expect(listed[0].kind).toBe('manual')
+    expect(listed[0].fileCount).toBeGreaterThan(10)
+    // Saving is back on, and a running server cannot be restored onto.
+    await expect.poll(async () => (await remote()).log, { timeout: 30_000 }).toMatch(/Backup finished.*Automatic saving is now enabled/)
+    await expect(rows.first().getByRole('button', { name: 'Restore backup' })).toBeDisabled()
+    const refused = await page.evaluate(
+      ({ hostId, serverId, backupId }) =>
+        (window as unknown as ApiWindow).api.restoreRemoteBackup(hostId, serverId, backupId).then(() => '', (e: Error) => e.message),
+      { ...created, backupId: listed[0].id as string }
+    )
+    expect(refused).toMatch(/Stop the server before restoring a backup/)
+    const missing = await page.evaluate(
+      ({ hostId, serverId }) =>
+        (window as unknown as ApiWindow).api.deleteRemoteBackup(hostId, serverId, '20200101-000000-manual').then(() => '', (e: Error) => e.message),
+      created
+    )
+    // A backup that is not there is not mistaken for an outdated daemon.
+    expect(missing).toMatch(/backup not found/)
+
     await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.stopRemoteServer(hostId, serverId), created)
     await expect.poll(async () => (await remote()).status, { timeout: 90_000, intervals: [1000] }).toBe('stopped')
+
+    // Damage the stopped server (msmd runs on this machine), then restore.
+    const serverDir = created.server.dir as string
+    const level = join(serverDir, 'world', 'level.dat')
+    const marker = join(serverDir, 'world', 'added-after-the-backup.txt')
+    expect(existsSync(level)).toBe(true)
+    rmSync(level)
+    writeFileSync(marker, 'x')
+    const restoreButton = rows.first().getByRole('button', { name: 'Restore backup' })
+    await expect(restoreButton).toBeEnabled({ timeout: 30_000 })
+    await restoreButton.click()
+    await page.getByRole('button', { name: 'Restore', exact: true }).click()
+    await expect(page.getByText('Backup restored. You can start the server now.')).toBeVisible({ timeout: 4 * 60_000 })
+    // The state before the restore was kept as a backup of its own.
+    await expect(rows).toHaveCount(2)
+    await expect(backups.getByText('before restore')).toBeVisible()
+    expect(existsSync(level)).toBe(true)
+    expect(existsSync(marker)).toBe(false)
+    expect(existsSync(`${serverDir}.restore-stage`) || existsSync(`${serverDir}.restore-aside`)).toBe(false)
+    await page.keyboard.press('Escape')
+
+    // The restored server boots.
+    await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.startRemoteServer(hostId, serverId), created)
+    await expect
+      .poll(async () => ((await remote()).log.match(/Done \(\d/g) ?? []).length, { timeout: 6 * 60_000, intervals: [2000] })
+      .toBe(3)
+    await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.stopRemoteServer(hostId, serverId), created)
+    await expect.poll(async () => (await remote()).status, { timeout: 90_000, intervals: [1000] }).toBe('stopped')
+
+    // Deleting the server takes its backups on the host along.
+    const backupsDir = join(dirname(dirname(serverDir)), 'backups', created.serverId)
+    expect(existsSync(backupsDir)).toBe(true)
+    await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.deleteRemoteServer(hostId, serverId), created)
+    await expect.poll(async () => (await remote()).status, { timeout: 30_000 }).toBe('missing')
+    expect(existsSync(backupsDir)).toBe(false)
+    expect(existsSync(serverDir)).toBe(false)
   } finally {
     await page
       .evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.deleteRemoteServer(hostId, serverId), created)

@@ -144,6 +144,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('hosts:software-versions', (_e, { hostId, platform }) =>
     hostsManager.remoteSoftwareVersions(hostId, platform)
   )
+  ipcMain.handle('hosts:backups', (_e, { hostId, serverId }) => hostsManager.listRemoteBackups(hostId, serverId))
+  ipcMain.handle('hosts:backup-create', (_e, { hostId, serverId }) =>
+    hostsManager.createRemoteBackup(hostId, serverId)
+  )
+  ipcMain.handle('hosts:backup-restore', (_e, { hostId, serverId, backupId, backupFirst }) =>
+    hostsManager.restoreRemoteBackup(hostId, serverId, backupId, backupFirst)
+  )
+  ipcMain.handle('hosts:backup-delete', (_e, { hostId, serverId, backupId }) =>
+    hostsManager.deleteRemoteBackup(hostId, serverId, backupId)
+  )
 
   ipcMain.handle('mod-manager:search', async (_e, options) => {
     return await modManager.searchMods(options)

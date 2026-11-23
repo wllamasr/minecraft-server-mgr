@@ -219,6 +219,9 @@ operate and debug; it is a **v2** option, not needed for the MVP.
 | `PATCH` | `/v1/servers/{id}` | Change settings (`restartSchedule`). |
 | `DELETE` | `/v1/servers/{id}` | Delete. `204` when done; `202` for a running server, which stops first and is then removed. |
 | `GET`/`PUT` | `/v1/servers/{id}/properties` | Read/write `server.properties`. |
+| `GET`/`POST` | `/v1/servers/{id}/backups` | List backups; start one (`202` with an operation id). |
+| `DELETE` | `/v1/servers/{id}/backups/{backupId}` | Delete a backup. |
+| `POST` | `/v1/servers/{id}/backups/{backupId}/restore` | Start a restore onto a stopped server (`202`). |
 | `POST` | `/v1/servers/{id}/command` | Send a console command. |
 | `GET` | `/v1/servers/{id}/logs` | Historical log buffer. |
 | `GET` (WS) | `/v1/servers/{id}/console` | Live console stream + stdin. |
