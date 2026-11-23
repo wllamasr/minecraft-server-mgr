@@ -403,7 +403,7 @@ SEED
     HH="${HOST_TIME%%:*}"; REST="${HOST_TIME#*:}"; MM="${REST%%:*}"; SS="${REST#*:}"
     AHEAD=1
     # Too close to the minute, the scheduler might first look after it.
-    [ "${SS#0}" -ge 40 ] && AHEAD=2
+    [ "${SS#0}" -ge 30 ] && AHEAD=2
     TOTAL=$(( (${HH#0} * 60 + ${MM#0} + AHEAD) % 1440 ))
     AT="$(printf '%02d:%02d' $((TOTAL / 60)) $((TOTAL % 60)))"
     UPDATED="$(curl -sk -X PATCH -H "$AUTH" -H "$JSON" -d "{\"backupSchedule\":\"$AT\",\"backupKeep\":1}" "$BASE/v1/servers/$COLD")"

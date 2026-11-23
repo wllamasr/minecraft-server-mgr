@@ -335,7 +335,7 @@ test('deploys a Paper server to a remote host', async () => {
     expect(clock).not.toBeNull()
     const [hh, mm, ss] = (clock as RegExpExecArray).slice(1).map(Number)
     // Too close to the minute, the host's scheduler might first look after it.
-    const due = (hh * 60 + mm + (ss >= 40 ? 2 : 1)) % 1440
+    const due = (hh * 60 + mm + (ss >= 30 ? 2 : 1)) % 1440
     const at = `${String(Math.floor(due / 60)).padStart(2, '0')}:${String(due % 60).padStart(2, '0')}`
     const schedule = page.getByTestId('remote-backup-schedule')
     await schedule.getByRole('switch', { name: 'Back up every day' }).click()

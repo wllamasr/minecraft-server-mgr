@@ -94,9 +94,6 @@ func (m *Manager) backupTick(now time.Time, s store.Server) bool {
 	// crash, another backup or a restore): the occurrence stays due and the
 	// next tick tries again.
 	if m.startScheduledBackup(s, act.Due) {
-		if again {
-			forget()
-		}
 		// Counted as handled from the moment it starts: a backup that fails
 		// is reported, not repeated every fifteen seconds.
 		m.backupSchedules[id] = schedule.BackupStarted(st, act.Due)
@@ -112,6 +109,12 @@ func (m *Manager) startScheduledBackup(s store.Server, occurrence time.Time) boo
 		return false
 	}
 	op.scheduled = true
+	// A note to try this occurrence again is settled by this attempt. It is
+	// cleared here, before the attempt runs, so that it cannot take away the
+	// note the attempt itself may leave.
+	m.mu.Lock()
+	delete(m.backupRetries, s.ID)
+	m.mu.Unlock()
 	id := sv.ID
 	// How many to keep is read when the backup is done, not now: it may be
 	// changed while a long backup runs.
