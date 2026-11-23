@@ -84,6 +84,7 @@ function handle(serverId: string, schedule: string, running: boolean, now: Date)
     if (action === 'wait') return
     deferred.delete(serverId)
     if (action === 'restart') restartNow(serverId, schedule)
+    else if (running) pushLog(serverId, 'Scheduled restart skipped: its time passed while it waited for a backup.', 'WARN')
     return
   }
 

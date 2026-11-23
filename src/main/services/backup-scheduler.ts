@@ -84,12 +84,11 @@ function handle(server: ServerWithStatus, schedule: string, now: Date): void {
 
   // Not possible right now (starting, stopping, another backup or a restore):
   // the occurrence stays due and the next tick tries again.
-  // A crashed server that is about to be started again is left alone: it is
-  // backed up once it is running.
+  // A crashed server that is about to be started again is left alone (it
+  // reads as stopped until then): it is backed up once it is running.
   const ready =
-    server.status === 'running' ||
-    server.status === 'stopped' ||
-    (server.status === 'crashed' && !isAutoRestartPending(serverId))
+    (server.status === 'running' || server.status === 'stopped' || server.status === 'crashed') &&
+    !isAutoRestartPending(serverId)
   if (!ready || busyKind(serverId)) return
 
   // Counted as handled from the moment it starts: a backup that fails is

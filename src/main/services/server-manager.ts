@@ -653,21 +653,30 @@ function scheduleAutoRestart(serverId: string, name: string): void {
 
   cancelAutoRestart(serverId)
   const timer = setTimeout(() => {
-    restartTimers.delete(serverId)
+    const start = (): void => {
+      // Stopped or deleted while waiting: cancelAutoRestart removed the entry.
+      if (restartTimers.get(serverId) !== timer) return
+      restartTimers.delete(serverId)
+      if (shuttingDown || runningServers.has(serverId)) return
+      try {
+        startServer(serverId)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        pushLog(serverId, `Auto-restart failed: ${message}`, 'ERROR')
+      }
+    }
     // A backup of the files would make the start fail (and one that was
-    // running when the server crashed is of no use). Getting the server back
-    // comes first.
-    void cancelBusy(serverId, 'the server is restarting after a crash')
-      .catch(() => undefined)
-      .then(() => {
-        if (shuttingDown || runningServers.has(serverId)) return
-        try {
-          startServer(serverId)
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          pushLog(serverId, `Auto-restart failed: ${message}`, 'ERROR')
-        }
-      })
+    // running when the server crashed is of no use): getting the server back
+    // comes first. A restore is the user's own doing and is left alone. The
+    // entry stays in restartTimers meanwhile, so a stop or a delete during
+    // the wait still cancels this restart.
+    if (busyKind(serverId) === 'backup') {
+      void cancelBusy(serverId, 'the server is restarting after a crash')
+        .catch(() => undefined)
+        .then(start)
+    } else {
+      start()
+    }
   }, RESTART_DELAY_MS)
   restartTimers.set(serverId, timer)
 }
