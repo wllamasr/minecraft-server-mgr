@@ -83,6 +83,34 @@ renderer-facing "install loader" channel: the renderer never passes a filesystem
 first, and rejects for an unknown platform. For plugin platforms, `installMod` and the related
 calls use the server's `plugins/` folder, and only `modrinth` is accepted.
 
+## Remote hosts
+
+| `window.api` method                                  | Channel                    | Request                          | Response                 |
+| ---------------------------------------------------- | -------------------------- | -------------------------------- | ------------------------ |
+| `listHosts()`                                        | `hosts:list`               | —                                | `RemoteHost[]`           |
+| `addHost(input)`                                     | `hosts:add`                | `AddHostInput`                   | `RemoteHost`             |
+| `removeHost(id)`                                     | `hosts:remove`             | `string`                         | `void`                   |
+| `hostInfo(id)`                                       | `hosts:info`               | `string`                         | `HostInfo`               |
+| `listRemoteServers(id)`                              | `hosts:servers`            | `string`                         | `RemoteServer[]`         |
+| `createRemoteServer(hostId, input)`                  | `hosts:create-server`      | `{ hostId, input }`              | `RemoteServer`           |
+| `startRemoteServer(hostId, serverId)`                | `hosts:start`              | `{ hostId, serverId }`           | `void`                   |
+| `stopRemoteServer(hostId, serverId)`                 | `hosts:stop`               | `{ hostId, serverId }`           | `void`                   |
+| `deleteRemoteServer(hostId, serverId)`               | `hosts:delete-server`      | `{ hostId, serverId }`           | `void`                   |
+| `sendRemoteCommand(hostId, serverId, command)`       | `hosts:command`            | `{ hostId, serverId, command }`  | `void`                   |
+| `remoteServerLogs(hostId, serverId)`                 | `hosts:logs`               | `{ hostId, serverId }`           | `ServerLogEntry[]`       |
+| `remoteLoaderVersions(hostId, loader, mcVersion)`    | `hosts:loader-versions`    | `{ hostId, loader, mcVersion }`  | `{ version, stable }[]`  |
+| `remoteSoftwareVersions(hostId, platform)`           | `hosts:software-versions`  | `{ hostId, platform }`           | `string[]`               |
+
+`remoteSoftwareVersions` asks the host's `msmd` daemon (`GET /v1/software/{platform}/versions`) for
+the Minecraft release versions the platform has builds for, newest first; `platform` is
+`'paper' | 'purpur' | 'folia'`. `remoteLoaderVersions` also accepts these platforms and returns
+build numbers. `CreateRemoteServerInput` has an optional `jvmProfile` (`'default' | 'aikar'`) and
+its `modLoader` may be `paper`, `purpur` or `folia` (with `modLoaderVersion` as the build number).
+A host running an older `msmd` has no `/v1/software` endpoint and rejects the new engines, so
+`hosts:software-versions` and such deployments fail until the daemon is updated; an older daemon
+silently ignores `jvmProfile`. Plugin installation and management are local-only; remote hosts have no
+mod or plugin browser.
+
 ## App & window
 
 | `window.api` method     | Channel                | Response  |
@@ -112,6 +140,8 @@ The shapes referenced above are defined in `src/shared/types`:
 
 - `ServerInstance`, `ServerWithStatus`, `CreateServerInput`, `ServerStatus`,
   `JavaInstallation`, `ServerLogEntry` — [`server.types.ts`](../src/shared/types/server.types.ts)
+- `RemoteHost`, `HostInfo`, `RemoteServer`, `AddHostInput`, `CreateRemoteServerInput`
+  — [`host.types.ts`](../src/shared/types/host.types.ts)
 - `ModSource`, `ModSearchOptions`, `ModSearchResponse`, `UnifiedMod`, `UnifiedModVersion`
   — [`mod.types.ts`](../src/shared/types/mod.types.ts)
 - `ServerTelemetry` — [`telemetry.types.ts`](../src/shared/types/telemetry.types.ts)

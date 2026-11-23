@@ -306,7 +306,7 @@ function CreateServerPage() {
                       <Text size="xs" fw={800} c="dark.1" tt="uppercase" mb={12}>Minecraft Version</Text>
                       <Select
                         data={versionOptions}
-                        value={form.minecraftVersion}
+                        value={versionOptions.includes(form.minecraftVersion) ? form.minecraftVersion : null}
                         searchable={!!pluginPlatform}
                         disabled={!!pluginPlatform && loadingPlatformVersions}
                         leftSection={pluginPlatform && loadingPlatformVersions ? <Loader size="xs" color="emerald.4" /> : undefined}

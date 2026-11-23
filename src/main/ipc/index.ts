@@ -108,6 +108,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('hosts:loader-versions', (_e, { hostId, loader, mcVersion }) =>
     hostsManager.remoteLoaderVersions(hostId, loader, mcVersion)
   )
+  ipcMain.handle('hosts:software-versions', (_e, { hostId, platform }) =>
+    hostsManager.remoteSoftwareVersions(hostId, platform)
+  )
 
   ipcMain.handle('mod-manager:search', async (_e, options) => {
     return await modManager.searchMods(options)

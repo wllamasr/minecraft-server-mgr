@@ -111,6 +111,9 @@ const api = {
     mcVersion: string
   ): Promise<{ version: string; stable: boolean }[]> =>
     ipcRenderer.invoke('hosts:loader-versions', { hostId, loader, mcVersion }),
+  /** Minecraft versions a plugin platform (paper, purpur, folia) has builds for on a remote host. */
+  remoteSoftwareVersions: (hostId: string, platform: 'paper' | 'purpur' | 'folia'): Promise<string[]> =>
+    ipcRenderer.invoke('hosts:software-versions', { hostId, platform }),
 
   // ─── App / Window ─────────────────────────────────────
   getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),

@@ -112,8 +112,12 @@ and non-stable builds are labelled "(experimental)" (Purpur has no release chann
 Paper and Folia, MD5 for Purpur, which only publishes MD5); if it does not match, the file is
 deleted and the server shows an *error* status. The vanilla jar is checked against Mojang's SHA-1.
 
-Paper, Purpur, and Folia are available for local servers only. Remote hosts (the `msmd` daemon)
-do not support them or the JVM profile yet; this is planned next.
+Paper, Purpur, and Folia are also available on remote hosts (the `msmd` daemon). In the **Deploy**
+dialog on the Remote Hosts page, pick the **Engine**; the Minecraft versions are loaded from the
+host, the newest stable build is preselected, and the **Optimized JVM flags** switch is on by
+default. The host must run an up-to-date `msmd`: with an older one the app shows an error when it
+loads the engine's version list. Installing plugins through the app works for local servers only;
+remote hosts have no mod or plugin browser.
 
 ### Running a large server
 

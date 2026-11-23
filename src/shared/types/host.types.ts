@@ -47,6 +47,8 @@ export interface CreateRemoteServerInput {
   port?: number
   minRam?: string
   maxRam?: string
+  /** JVM argument profile: `default` or `aikar` (tuned G1GC flags). Needs msmd with engine support. */
+  jvmProfile?: 'default' | 'aikar'
   autoStart?: boolean
   modpack?: {
     source: string

@@ -11,6 +11,7 @@ import (
 
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/server"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/software"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
 )
 
@@ -57,6 +58,24 @@ func (s *Server) info() map[string]any {
 
 func (s *Server) handleLoaderVersions(w http.ResponseWriter, r *http.Request) {
 	l := r.PathValue("loader")
+	// Plugin platforms answer with their build numbers for the Minecraft version.
+	if software.Valid(l) {
+		mc := r.URL.Query().Get("mc")
+		if !software.IsReleaseVersion(mc) {
+			writeError(w, http.StatusBadRequest, "mc must be a Minecraft release version")
+			return
+		}
+		builds, err := software.Builds(software.Platform(l), mc)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		if builds == nil {
+			builds = []software.Build{}
+		}
+		writeJSON(w, http.StatusOK, builds)
+		return
+	}
 	if !loader.Valid(l) {
 		writeError(w, http.StatusBadRequest, "unknown mod loader")
 		return
@@ -65,6 +84,25 @@ func (s *Server) handleLoaderVersions(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
+	}
+	writeJSON(w, http.StatusOK, versions)
+}
+
+// handleSoftwareVersions lists the Minecraft versions a plugin platform
+// (paper, purpur, folia) publishes builds for, newest first.
+func (s *Server) handleSoftwareVersions(w http.ResponseWriter, r *http.Request) {
+	p := r.PathValue("platform")
+	if !software.Valid(p) {
+		writeError(w, http.StatusBadRequest, "unknown server software")
+		return
+	}
+	versions, err := software.Versions(software.Platform(p))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if versions == nil {
+		versions = []string{}
 	}
 	writeJSON(w, http.StatusOK, versions)
 }

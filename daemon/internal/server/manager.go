@@ -18,7 +18,9 @@ import (
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/config"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/console"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/java"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/jvm"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/software"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
 )
 
@@ -50,6 +52,7 @@ type CreateInput struct {
 	Port             int         `json:"port,omitempty"`
 	MinRAM           string      `json:"minRam,omitempty"`
 	MaxRAM           string      `json:"maxRam,omitempty"`
+	JVMProfile       string      `json:"jvmProfile,omitempty"`
 	AutoStart        bool        `json:"autoStart,omitempty"`
 	Modpack          *ModpackRef `json:"modpack,omitempty"`
 }
@@ -160,11 +163,44 @@ func (m *Manager) Create(in CreateInput) (store.Server, error) {
 		return store.Server{}, errors.New("minecraftVersion is required")
 	}
 	if in.ModLoader != "" {
-		if !loader.Valid(in.ModLoader) {
+		if !loader.Valid(in.ModLoader) && !software.Valid(in.ModLoader) {
 			return store.Server{}, fmt.Errorf("unknown mod loader: %s", in.ModLoader)
 		}
 		if in.ModLoaderVersion == "" {
 			return store.Server{}, fmt.Errorf("modLoaderVersion is required for %s", in.ModLoader)
+		}
+		// The version ends up in download URLs and installer arguments.
+		if !engineVersionPattern.MatchString(in.ModLoaderVersion) {
+			return store.Server{}, fmt.Errorf("invalid modLoaderVersion: %s", in.ModLoaderVersion)
+		}
+	}
+	if (in.Modpack == nil || in.Modpack.MrpackURL == "") && software.Valid(in.ModLoader) {
+		if !software.IsReleaseVersion(in.MinecraftVersion) {
+			return store.Server{}, fmt.Errorf("invalid minecraftVersion: %s", in.MinecraftVersion)
+		}
+		if !software.ValidBuildID(in.ModLoaderVersion) {
+			return store.Server{}, fmt.Errorf("modLoaderVersion must be a %s build number", in.ModLoader)
+		}
+	}
+	minRAM, maxRAM := orStr(in.MinRAM, "1G"), orStr(in.MaxRAM, "2G")
+	if !jvm.ValidRAM(minRAM) {
+		return store.Server{}, fmt.Errorf("invalid minRam: %s", minRAM)
+	}
+	if !jvm.ValidRAM(maxRAM) {
+		return store.Server{}, fmt.Errorf("invalid maxRam: %s", maxRAM)
+	}
+	if !jvm.ValidProfile(in.JVMProfile) {
+		return store.Server{}, fmt.Errorf("unknown jvmProfile: %s", in.JVMProfile)
+	}
+	if err := jvm.Validate(minRAM, maxRAM, in.JVMProfile); err != nil {
+		// Only one bound was given and it crosses the other's default: follow it.
+		switch {
+		case in.MinRAM == "" && in.MaxRAM != "":
+			minRAM = maxRAM
+		case in.MaxRAM == "" && in.MinRAM != "":
+			maxRAM = minRAM
+		default:
+			return store.Server{}, err
 		}
 	}
 
@@ -185,8 +221,9 @@ func (m *Manager) Create(in CreateInput) (store.Server, error) {
 		ModLoader:        in.ModLoader,
 		ModLoaderVersion: in.ModLoaderVersion,
 		Port:             orInt(in.Port, 25565),
-		MinRAM:           orStr(in.MinRAM, "1G"),
-		MaxRAM:           orStr(in.MaxRAM, "2G"),
+		MinRAM:           minRAM,
+		MaxRAM:           maxRAM,
+		JVMProfile:       in.JVMProfile,
 		AutoStart:        in.AutoStart,
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -458,18 +495,21 @@ func orStr(v, def string) string {
 	return v
 }
 
+// engineVersionPattern is what a loader version or build number may look like.
+var engineVersionPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$`)
+
 // buildLaunchCmd constructs the process launch command for a server, using the
 // right entrypoint for its loader and putting the resolved Java on PATH (so a
 // Forge/NeoForge run.sh finds it).
 func buildLaunchCmd(s store.Server, javaPath string) *exec.Cmd {
 	dir := s.Dir
-	ram := []string{"-Xms" + s.MinRAM, "-Xmx" + s.MaxRAM}
+	ram := jvm.Args(s.MinRAM, s.MaxRAM, s.JVMProfile)
 	var cmd *exec.Cmd
 
 	switch loader.Type(s.ModLoader) {
 	case loader.Forge, loader.NeoForge:
 		_ = os.WriteFile(filepath.Join(dir, "user_jvm_args.txt"),
-			[]byte("-Xms"+s.MinRAM+"\n-Xmx"+s.MaxRAM+"\n"), 0o640)
+			[]byte(strings.Join(ram, "\n")+"\n"), 0o640)
 		if fileExists(filepath.Join(dir, "run.sh")) {
 			cmd = exec.Command("sh", "run.sh", "nogui")
 		} else {

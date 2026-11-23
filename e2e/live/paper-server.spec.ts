@@ -208,3 +208,57 @@ test('lists versions for every engine through the shared HTTP client', async () 
     expect(count, engine).toBeGreaterThan(0)
   }
 })
+
+/**
+ * Remote host: needs a running msmd. Start one (`go run ./cmd/msmd -data <dir>
+ * -addr 127.0.0.1:18444` in daemon/) and pass its address and token:
+ *
+ *   MSM_E2E_LIVE=1 MSM_E2E_LIVE_MSMD_URL=https://127.0.0.1:18444 \
+ *   MSM_E2E_LIVE_MSMD_TOKEN=<contents of <dir>/token> npx playwright test e2e/live
+ */
+test('deploys a Paper server to a remote host', async () => {
+  const baseUrl = process.env.MSM_E2E_LIVE_MSMD_URL
+  const token = process.env.MSM_E2E_LIVE_MSMD_TOKEN
+  test.skip(!baseUrl || !token, 'Set MSM_E2E_LIVE_MSMD_URL and MSM_E2E_LIVE_MSMD_TOKEN to test a remote host')
+
+  const created = await page.evaluate(
+    async ({ baseUrl, token, mc, port }) => {
+      const api = (window as unknown as ApiWindow).api
+      const host = await api.addHost({ name: 'Live host', baseUrl, token })
+      const versions: string[] = await api.remoteSoftwareVersions(host.id, 'paper')
+      const builds: { version: string; stable: boolean }[] = await api.remoteLoaderVersions(host.id, 'paper', mc)
+      const build = (builds.find((b) => b.stable) ?? builds[0]).version
+      const server = await api.createRemoteServer(host.id, {
+        name: 'live-remote-paper', minecraftVersion: mc, modLoader: 'paper', modLoaderVersion: build,
+        port, minRam: '1G', maxRam: '2G', jvmProfile: 'aikar'
+      })
+      return { hostId: host.id as string, serverId: server.id as string, listsVersion: versions.includes(mc), server }
+    },
+    { baseUrl: baseUrl as string, token: token as string, mc: MC_VERSION, port: PORT + 2 }
+  )
+  expect(created.listsVersion).toBe(true)
+  expect(created.server.modLoader).toBe('paper')
+  expect(created.server.jvmProfile).toBe('aikar')
+
+  const remote = (): Promise<{ status: string; log: string }> =>
+    page.evaluate(async ({ hostId, serverId }) => {
+      const api = (window as unknown as ApiWindow).api
+      const servers: { id: string; status: string }[] = await api.listRemoteServers(hostId)
+      const log = (await api.remoteServerLogs(hostId, serverId)).map((l: { line: string }) => l.line).join(' | ')
+      return { status: servers.find((s) => s.id === serverId)?.status ?? 'missing', log }
+    }, created)
+
+  try {
+    await expect.poll(async () => (await remote()).status, { timeout: 5 * 60_000, intervals: [1000] }).toBe('stopped')
+    expect((await remote()).log).toMatch(/Verified paper-.*\.jar \(sha256 checksum OK\)/)
+
+    await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.startRemoteServer(hostId, serverId), created)
+    await expect.poll(async () => (await remote()).log, { timeout: 6 * 60_000, intervals: [2000] }).toMatch(/Done \(\d/)
+    await page.evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.stopRemoteServer(hostId, serverId), created)
+    await expect.poll(async () => (await remote()).status, { timeout: 90_000, intervals: [1000] }).toBe('stopped')
+  } finally {
+    await page
+      .evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.deleteRemoteServer(hostId, serverId), created)
+      .catch(() => undefined)
+  }
+})

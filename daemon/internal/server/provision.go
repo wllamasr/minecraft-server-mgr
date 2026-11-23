@@ -13,6 +13,7 @@ import (
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/httpx"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/loader"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/modpack"
+	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/software"
 	"github.com/wllamasr/minecraft-server-mgr/daemon/internal/store"
 )
 
@@ -39,10 +40,23 @@ func (m *Manager) provision(s store.Server) {
 	emit(fmt.Sprintf("Provisioning server %q...", s.Name), "INFO")
 
 	jar := filepath.Join(s.Dir, "server.jar")
-	emit("Downloading Minecraft "+s.MinecraftVersion+" server jar...", "INFO")
-	if err := downloadVanillaServer(s.MinecraftVersion, jar); err != nil {
-		m.failProvision(s.ID, err)
-		return
+	// Plugin platforms (Paper, Purpur, Folia) ship a complete server jar that
+	// takes the place of the vanilla one; everything else starts from vanilla.
+	isPlatform := s.ModpackURL == "" && software.Valid(s.ModLoader)
+	if isPlatform {
+		emit(fmt.Sprintf("Downloading %s %s build %s...", s.ModLoader, s.MinecraftVersion, s.ModLoaderVersion), "INFO")
+		d, err := software.Fetch(software.Platform(s.ModLoader), s.MinecraftVersion, s.ModLoaderVersion, jar)
+		if err != nil {
+			m.failProvision(s.ID, err)
+			return
+		}
+		emit(fmt.Sprintf("Verified %s (%s checksum OK).", d.FileName, d.Algorithm), "INFO")
+	} else {
+		emit("Downloading Minecraft "+s.MinecraftVersion+" server jar...", "INFO")
+		if err := downloadVanillaServer(s.MinecraftVersion, jar); err != nil {
+			m.failProvision(s.ID, err)
+			return
+		}
 	}
 
 	emit("Writing server.properties and accepting the EULA...", "INFO")
@@ -80,7 +94,7 @@ func (m *Manager) provision(s store.Server) {
 			m.failProvision(s.ID, err)
 			return
 		}
-	} else if s.ModLoader != "" {
+	} else if s.ModLoader != "" && !isPlatform {
 		emit(fmt.Sprintf("Installing %s %s...", s.ModLoader, s.ModLoaderVersion), "INFO")
 		if err := loader.Install(loader.Type(s.ModLoader), s.ModLoaderVersion, s.MinecraftVersion, s.Dir, javaPath,
 			func(line string) { emit(line, "INFO") }); err != nil {

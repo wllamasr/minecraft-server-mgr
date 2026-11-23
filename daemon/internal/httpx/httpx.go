@@ -31,6 +31,19 @@ func newClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: tr}
 }
 
+// UserAgent identifies the daemon to the APIs it calls. PaperMC asks clients to
+// send a descriptive value; it names the public project, never the host.
+const UserAgent = "msmd (+https://github.com/wllamasr/minecraft-server-mgr)"
+
+func get(timeout time.Duration, url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", UserAgent)
+	return newClient(timeout).Do(req)
+}
+
 func withRetry(attempts int, fn func() error) error {
 	var err error
 	for i := 0; i < attempts; i++ {
@@ -45,7 +58,7 @@ func withRetry(attempts int, fn func() error) error {
 // GetJSON fetches url and decodes the JSON body into target.
 func GetJSON(url string, target any) error {
 	return withRetry(3, func() error {
-		resp, err := newClient(60 * time.Second).Get(url)
+		resp, err := get(60*time.Second, url)
 		if err != nil {
 			return err
 		}
@@ -61,7 +74,7 @@ func GetJSON(url string, target any) error {
 func GetText(url string) (string, error) {
 	var out string
 	err := withRetry(3, func() error {
-		resp, err := newClient(60 * time.Second).Get(url)
+		resp, err := get(60*time.Second, url)
 		if err != nil {
 			return err
 		}
@@ -85,7 +98,7 @@ func Download(url, dest string) error {
 		return err
 	}
 	return withRetry(3, func() error {
-		resp, err := newClient(15 * time.Minute).Get(url)
+		resp, err := get(15*time.Minute, url)
 		if err != nil {
 			return err
 		}

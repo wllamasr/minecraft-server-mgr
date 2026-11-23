@@ -26,6 +26,21 @@ All notable changes to this project are documented here. The format follows
 - IPC channel `server-software:get-versions` (`getServerSoftwareVersions(platform)`).
   `modloader:get-versions` now also accepts paper, purpur and folia and returns build numbers.
   `server:create` accepts an optional `jvmProfile`. See [docs/IPC.md](docs/IPC.md).
+- Remote hosts (the `msmd` daemon) support **Paper**, **Purpur** and **Folia** and the JVM profile.
+  `POST /v1/servers` accepts `modLoader` `paper`, `purpur` or `folia` (`modLoaderVersion` is the
+  build number) and an optional `jvmProfile` (`default` or `aikar`, returned in server objects).
+  The daemon downloads the build as `server.jar` and verifies it (SHA-256 for Paper and Folia,
+  MD5 for Purpur). `GET /v1/loaders/{loader}/versions` also accepts these platforms. A host
+  running an older `msmd` must be updated. Plugin management through the app stays local-only.
+- Daemon endpoint `GET /v1/software/{platform}/versions` (paper, purpur, folia): Minecraft release
+  versions, newest first.
+- The Deploy dialog on the Remote Hosts page offers the engines Paper, Purpur and Folia, loads
+  versions from the host, preselects the newest stable build, and has an "Optimized JVM flags"
+  switch. New IPC channel `hosts:software-versions` (`remoteSoftwareVersions(hostId, platform)`);
+  `CreateRemoteServerInput` has an optional `jvmProfile`. See [docs/IPC.md](docs/IPC.md).
+- Opt-in live daemon smoke test: `MSMD_SMOKE_LIVE=1` in `daemon/scripts/smoke.sh` provisions,
+  boots, stops and deletes a real Paper server with the `aikar` profile (needs network; never
+  runs in CI). `daemon/scripts/smoke.sh` also asserts input validation offline.
 - Opt-in live end-to-end test `e2e/live/paper-server.spec.ts` (needs network and Java 21; skipped
   unless `MSM_E2E_LIVE=1`; never runs in CI).
 - End-to-end UI tests (`e2e/`, Playwright) that launch the built Electron app with an isolated
@@ -60,7 +75,14 @@ All notable changes to this project are documented here. The format follows
   for plugin platforms).
 - The app sends a descriptive `User-Agent` (`MinecraftServerManager (+https://github.com/wllamasr/minecraft-server-mgr)`)
   to the metadata APIs it calls.
-- Remote hosts (the `msmd` daemon) do not support Paper, Purpur, Folia or the JVM profile yet.
+- Daemon: `POST /v1/servers` now validates its input and answers HTTP 400 for a bad `minRam` or
+  `maxRam` format (`4G`, `4096M`), min RAM above max RAM, an unknown `jvmProfile`, or a malformed
+  `modLoaderVersion`.
+- When only one of `minRam` / `maxRam` is given and it crosses the other's default, the other
+  bound follows it (for example `maxRam: 512M` alone gives `minRam: 512M`), locally and on remote
+  hosts.
+- The daemon sends `User-Agent: msmd (+https://github.com/wllamasr/minecraft-server-mgr)` on its
+  outgoing requests.
 - Only one instance of the app can run at a time; launching it again focuses the open window.
 - The daemon smoke test (`make smoke`) now asserts on every check, is portable (Linux and
   Windows), and covers wrong-token and TLS-only cases.
@@ -78,3 +100,5 @@ All notable changes to this project are documented here. The format follows
 - Java requirement mapping: Minecraft 26.x now requires Java 25 (it was mapped to Java 8), and
   1.20.5 and 1.20.6 now require Java 21 (they were mapped to Java 17). The full mapping is 26.x:
   Java 25; 1.20.5 to 1.21.x: Java 21; 1.17 to 1.20.4: Java 17; 1.16.5 and older: Java 8.
+- Daemon Java mapping: Minecraft 26.x now maps to Java 25 (it was Java 8), and the daemon installs
+  that Temurin JDK automatically when it is missing.

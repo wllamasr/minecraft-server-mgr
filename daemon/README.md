@@ -13,12 +13,21 @@ on the host:
 
 - **Java, automatically.** Detects installed JDKs (JAVA_HOME, PATH, common
   locations); if none matches the server's Minecraft version it downloads and
-  installs an Eclipse Temurin JDK (8/17/21) into its data dir. No manual setup.
+  installs an Eclipse Temurin JDK (8/17/21/25) into its data dir. No manual setup.
 - **Servers.** Create (async provisioning), start, stop, delete, list, get, with
   a live console (history + SSE) and command input. Crash **auto-restart**
   (capped 3/min) when `autoStart` is set.
 - **Mod loaders.** Fabric, Quilt, Forge, NeoForge — installed with each
   project's official installer; the right launch command is used per loader.
+- **Plugin platforms.** Paper, Purpur and Folia: pass `modLoader` (`paper`, `purpur`, `folia`),
+  `modLoaderVersion` (the build number) and a release `minecraftVersion`. The build is downloaded
+  as `server.jar` and verified (SHA-256 for Paper and Folia, MD5 for Purpur); a mismatching file is
+  removed and provisioning fails. Builds are listed with `GET /v1/loaders/{loader}/versions?mc=`
+  and Minecraft versions with `GET /v1/software/{platform}/versions`.
+- **JVM profile.** Optional `jvmProfile` on create: `default` or `aikar` (Aikar's G1GC flags with
+  `-Xms` equal to `-Xmx`; works with every engine, Forge/NeoForge via `user_jvm_args.txt`).
+- **Input validation.** Create returns HTTP 400 for a bad `minRam`/`maxRam` (e.g. `4G`, `4096M`),
+  min above max, an unknown `jvmProfile`, or a malformed `modLoaderVersion`.
 - **Modpacks.** Deploy a Modrinth `.mrpack` (pass its URL): the daemon installs
   the exact loader it pins, downloads the server files, and applies overrides.
 - **Security.** TLS with a self-signed cert (pinned by the manager, TOFU) and
@@ -138,7 +147,10 @@ make smoke    # build the real binary, run it over TLS, and assert on auth, pair
 ```
 
 `make smoke` needs `go` and `curl`, works on Linux and on Windows (Git Bash), and exits
-non-zero on the first failed check. Both run in CI on every push and pull request, on Linux
+non-zero on the first failed check. It also asserts input validation (offline). Set
+`MSMD_SMOKE_LIVE=1` to additionally provision, boot, stop and delete a real Paper server with the
+`aikar` profile (needs network; not run in CI; optional `MSMD_SMOKE_MC`, default `1.21.11`, and
+`MSMD_SMOKE_GAME_PORT`, default `25598`). The default checks run in CI on every push and pull request, on Linux
 (minimum and latest Go, with the race detector) and on Windows.
 
 ## Layout

@@ -1,24 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router'
 import {
   Title, Text, Stack, Group, Box, Card, Button, Badge, ActionIcon, TextInput,
-  Modal, Select, NumberInput, Loader, Tooltip, Code, ScrollArea, PasswordInput
+  Modal, Select, NumberInput, Loader, Tooltip, Code, ScrollArea, PasswordInput, Switch
 } from '@mantine/core'
 import {
   IconServer, IconPlus, IconTrash, IconPlayerPlay, IconPlayerStop,
   IconTerminal2, IconRefresh, IconPlugConnected, IconDownload
 } from '@tabler/icons-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import type { RemoteHost, RemoteServer } from '@shared/types'
+import { engineLabel, isPluginPlatform } from '@shared/constants'
 
 export const Route = createFileRoute('/hosts/')({
   component: HostsPage
 })
 
 const MC_VERSIONS = ['1.21.4', '1.21.1', '1.20.4', '1.20.1', '1.19.4', '1.18.2', '1.16.5']
-const LOADERS = ['(none / vanilla)', 'fabric', 'quilt', 'forge', 'neoforge']
+const LOADERS = ['(none / vanilla)', 'paper', 'purpur', 'folia', 'fabric', 'quilt', 'forge', 'neoforge']
 
 function statusColor(status: string): string {
   if (status === 'running') return 'emerald.4'
@@ -249,7 +250,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
               <Box style={{ minWidth: 0 }}>
                 <Text fw={800} truncate>{s.name}</Text>
                 <Text size="xs" c="dark.2">
-                  {s.modLoader || 'Vanilla'} · MC {s.minecraftVersion} · Port {s.port} · {s.maxRam}
+                  {engineLabel(s.modLoader)} · MC {s.minecraftVersion} · Port {s.port} · {s.maxRam}
                 </Text>
               </Box>
               <Badge size="sm" variant="light" color={statusColor(s.status).split('.')[0]}>{s.status}</Badge>
@@ -299,13 +300,45 @@ function DeployRemoteModal({
   const [loaderVersion, setLoaderVersion] = useState<string | null>(null)
   const [maxRam, setMaxRam] = useState(4)
 
+  const [optimizedJvm, setOptimizedJvm] = useState(false)
+
   const isVanilla = loader === LOADERS[0]
+  // Paper, Purpur and Folia publish their own Minecraft versions and are picked by build number.
+  const platform = isPluginPlatform(loader) ? loader : null
+
+  const { data: platformVersions, error: platformError } = useQuery({
+    queryKey: ['remote-software-versions', host.id, platform],
+    queryFn: () => window.api.remoteSoftwareVersions(host.id, platform as 'paper' | 'purpur' | 'folia'),
+    enabled: opened && !!platform,
+    staleTime: 5 * 60_000,
+    retry: false
+  })
+  const mcOptions = platform ? (platformVersions ?? []) : MC_VERSIONS
+  const mcSupported = !platform || !!platformVersions?.includes(mc)
+
+  useEffect(() => {
+    if (platform) {
+      if (platformVersions?.length && !platformVersions.includes(mc)) {
+        setMc(platformVersions[0])
+        setLoaderVersion(null)
+      }
+    } else if (!MC_VERSIONS.includes(mc)) {
+      setMc(MC_VERSIONS[0])
+      setLoaderVersion(null)
+    }
+  }, [platform, platformVersions, mc])
 
   const { data: versions } = useQuery({
     queryKey: ['remote-loader-versions', host.id, loader, mc],
     queryFn: () => window.api.remoteLoaderVersions(host.id, loader, mc),
-    enabled: opened && !isVanilla
+    enabled: opened && !isVanilla && mcSupported
   })
+
+  // Default to the newest stable build of a plugin platform.
+  useEffect(() => {
+    if (!platform || loaderVersion || !versions?.length) return
+    setLoaderVersion((versions.find((v) => v.stable) ?? versions[0]).version)
+  }, [platform, versions, loaderVersion])
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -315,7 +348,9 @@ function DeployRemoteModal({
         modLoader: isVanilla ? undefined : loader,
         modLoaderVersion: isVanilla ? undefined : loaderVersion || undefined,
         maxRam: `${maxRam}G`,
-        minRam: `${Math.max(1, Math.floor(maxRam / 2))}G`
+        minRam: `${Math.max(1, Math.floor(maxRam / 2))}G`,
+        // Omitted when off so hosts running an older msmd keep working.
+        ...(optimizedJvm ? { jvmProfile: 'aikar' as const } : {})
       }),
     onSuccess: (s) => {
       notifications.show({ color: 'blue', title: 'Deploying', message: `Provisioning "${s.name}" on ${host.name}.` })
@@ -329,11 +364,13 @@ function DeployRemoteModal({
     <Modal opened={opened} onClose={onClose} title={`Deploy to ${host.name}`} centered>
       <Stack gap="md">
         <TextInput label="Server name" value={name} onChange={(e) => setName(e.currentTarget.value)} />
-        <Select label="Minecraft version" data={MC_VERSIONS} value={mc} onChange={(v) => { setMc(v || '1.21.4'); setLoaderVersion(null) }} />
-        <Select label="Mod loader" data={LOADERS} value={loader} onChange={(v) => { setLoader(v || LOADERS[0]); setLoaderVersion(null) }} />
+        <Select label="Minecraft version" data={mcOptions} value={mcOptions.includes(mc) ? mc : null} searchable={!!platform}
+          error={platformError ? `Could not load ${engineLabel(loader)} versions from this host (${(platformError as Error).message}). The host may need a newer msmd.` : undefined} onChange={(v) => { setMc(v || '1.21.4'); setLoaderVersion(null) }} />
+        <Select label="Engine" data={LOADERS} value={loader}
+          onChange={(v) => { const next = v || LOADERS[0]; setLoader(next); setLoaderVersion(null); setOptimizedJvm(isPluginPlatform(next)) }} />
         {!isVanilla && (
           <Select
-            label={`${loader} version`}
+            label={platform ? `${engineLabel(loader)} build` : `${loader} version`}
             placeholder={versions ? 'Select…' : 'Loading…'}
             data={(versions || []).map((v) => ({ value: v.version, label: v.version + (v.stable ? ' (stable)' : '') }))}
             value={loaderVersion}
@@ -341,7 +378,14 @@ function DeployRemoteModal({
             searchable
           />
         )}
-        <NumberInput label="Max RAM (GB)" min={1} max={32} value={maxRam} onChange={(v) => setMaxRam(Number(v) || 4)} />
+        <NumberInput label="Max RAM (GB)" min={1} max={32} allowDecimal={false} clampBehavior="strict" value={maxRam} onChange={(v) => setMaxRam(Number(v) || 4)} />
+        <Switch
+          label="Optimized JVM flags"
+          description="Aikar's G1GC tuning with the full heap reserved up front. Recommended for busy servers."
+          checked={optimizedJvm}
+          onChange={(e) => setOptimizedJvm(e.currentTarget.checked)}
+          color="emerald.4"
+        />
         <Group justify="flex-end">
           <Button variant="subtle" color="dark.1" onClick={onClose}>Cancel</Button>
           <Button

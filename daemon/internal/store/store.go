@@ -26,9 +26,11 @@ type Server struct {
 	Port             int    `json:"port"`
 	MinRAM           string `json:"minRam"`
 	MaxRAM           string `json:"maxRam"`
-	AutoStart        bool   `json:"autoStart"`
-	CreatedAt        string `json:"createdAt"`
-	UpdatedAt        string `json:"updatedAt"`
+	// JVMProfile is "" / "default" (heap only) or "aikar" (tuned G1GC flags).
+	JVMProfile string `json:"jvmProfile,omitempty"`
+	AutoStart  bool   `json:"autoStart"`
+	CreatedAt  string `json:"createdAt"`
+	UpdatedAt  string `json:"updatedAt"`
 	// Modpack provenance (set when the server was deployed from a modpack).
 	ModpackSource    string `json:"modpackSource,omitempty"`
 	ModpackProjectID string `json:"modpackProjectId,omitempty"`

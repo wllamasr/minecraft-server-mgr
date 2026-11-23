@@ -11,7 +11,8 @@ mods, configuration, runtime lifecycle, and live diagnostics.
 
 Managing servers on **remote hosts** through the `msmd` daemon is an additive, early-stage
 capability specified separately in [DAEMON.md](DAEMON.md); this document covers local servers.
-Remote hosts do not support Paper, Purpur, Folia or the JVM profile yet (planned next).
+Remote hosts support Paper, Purpur, Folia and the JVM profile too (the host needs an up-to-date
+`msmd`); plugin management through the app is local-only.
 
 Out of scope: Bedrock edition, proxy networks (BungeeCord/Velocity), and multi-user access
 control.

@@ -1,3 +1,4 @@
+import { isPluginPlatform } from '../../shared/constants'
 import { safeStorage } from 'electron'
 import { v4 as uuid } from 'uuid'
 import { eq } from 'drizzle-orm'
@@ -139,6 +140,12 @@ export function remoteLoaderVersions(
   return remoteRequest(
     connFor(hostId),
     'GET',
-    `/v1/loaders/${loader}/versions?mc=${encodeURIComponent(mcVersion)}`
+    `/v1/loaders/${encodeURIComponent(loader)}/versions?mc=${encodeURIComponent(mcVersion)}`
   )
+}
+
+/** Minecraft versions a plugin platform (paper, purpur, folia) has builds for, as seen by the host. */
+export function remoteSoftwareVersions(hostId: string, platform: string): Promise<string[]> {
+  if (!isPluginPlatform(platform)) return Promise.reject(new Error('Unknown server software'))
+  return remoteRequest<string[]>(connFor(hostId), 'GET', `/v1/software/${platform}/versions`)
 }

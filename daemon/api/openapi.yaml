@@ -40,11 +40,27 @@ paths:
       responses: { "200": { description: OK } }
   /v1/loaders/{loader}/versions:
     get:
-      summary: List available versions for a mod loader (fabric|quilt|forge|neoforge)
+      summary: List available versions for a mod loader or plugin platform (fabric|quilt|forge|neoforge|paper|purpur|folia)
+      description: >
+        For paper, purpur and folia the result is the builds for the given Minecraft
+        version, newest first, as `[{ "version": "<build>", "stable": true|false }]`.
       parameters:
         - { name: loader, in: path, required: true, schema: { type: string } }
         - { name: mc, in: query, required: false, schema: { type: string } }
-      responses: { "200": { description: OK }, "400": { description: Unknown loader } }
+      responses: { "200": { description: OK }, "400": { description: "Unknown loader, or a malformed mc for paper/purpur/folia" } }
+  /v1/software/{platform}/versions:
+    get:
+      summary: List the Minecraft release versions a plugin platform has builds for (paper|purpur|folia)
+      parameters:
+        - { name: platform, in: path, required: true, schema: { type: string, enum: [paper, purpur, folia] } }
+      responses:
+        "200":
+          description: JSON array of Minecraft release versions, newest first
+          content:
+            application/json:
+              schema: { type: array, items: { type: string } }
+        "400": { description: Unknown platform }
+        "502": { description: The upstream API failed }
   /v1/servers:
     get:
       summary: List servers
@@ -60,12 +76,24 @@ paths:
               required: [name, minecraftVersion]
               properties:
                 name: { type: string }
-                minecraftVersion: { type: string }
-                modLoader: { type: string, description: "fabric|quilt|forge|neoforge" }
-                modLoaderVersion: { type: string }
+                minecraftVersion: { type: string, description: "Must be a release version for paper|purpur|folia" }
+                modLoader: { type: string, enum: [fabric, quilt, forge, neoforge, paper, purpur, folia] }
+                modLoaderVersion:
+                  type: string
+                  description: >
+                    Loader version; for paper|purpur|folia the build number (digits). The build is
+                    downloaded as server.jar and verified (SHA-256 for Paper and Folia, MD5 for
+                    Purpur); a mismatching file is removed and provisioning fails.
                 port: { type: integer }
-                minRam: { type: string, example: "1G" }
-                maxRam: { type: string, example: "2G" }
+                minRam: { type: string, pattern: '^[1-9]\d{0,5}[MG]$', example: "1G" }
+                maxRam: { type: string, pattern: '^[1-9]\d{0,5}[MG]$', example: "2G", description: "Must not be below minRam when both are given" }
+                jvmProfile:
+                  type: string
+                  enum: [default, aikar]
+                  description: >
+                    JVM flags profile. aikar = Aikar's G1GC flags with -Xms equal to -Xmx; applies
+                    to all engines (Forge/NeoForge via user_jvm_args.txt). Stored on the server and
+                    returned in server objects (omitted when empty).
                 autoStart: { type: boolean }
                 modpack:
                   type: object
@@ -78,7 +106,7 @@ paths:
                     name: { type: string }
       responses:
         "201": { description: Created }
-        "400": { description: Invalid input }
+        "400": { description: "Invalid input (bad RAM format, minRam above maxRam, unknown jvmProfile, malformed modLoaderVersion)" }
   /v1/servers/{id}:
     get:
       summary: Get a server

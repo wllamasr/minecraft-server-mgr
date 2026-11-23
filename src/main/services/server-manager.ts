@@ -125,8 +125,7 @@ export function createServer(input: CreateServerInput): ServerInstance {
     modLoaderVersion: input.modLoaderVersion || null,
     javaPath: null,
     port: input.port || DEFAULTS.SERVER_PORT,
-    minRam: input.minRam || DEFAULTS.MIN_RAM,
-    maxRam: input.maxRam || DEFAULTS.MAX_RAM,
+    ...resolveRam(input),
     autoStart: input.autoStart ?? false,
     createdAt: now,
     updatedAt: now,
@@ -489,6 +488,17 @@ async function downloadVanillaServer(
   if (serverDownload.sha1) {
     await verifyFileChecksum(destPath, 'sha1', serverDownload.sha1)
   }
+}
+
+/** Heap bounds for a new server; a single given bound pulls the other default along. */
+function resolveRam(input: CreateServerInput): { minRam: string; maxRam: string } {
+  let minRam = input.minRam || DEFAULTS.MIN_RAM
+  let maxRam = input.maxRam || DEFAULTS.MAX_RAM
+  if (ramToMb(minRam) > ramToMb(maxRam)) {
+    if (input.minRam) maxRam = minRam
+    else minRam = maxRam
+  }
+  return { minRam, maxRam }
 }
 
 /**

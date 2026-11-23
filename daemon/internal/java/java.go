@@ -33,6 +33,13 @@ type Installation struct {
 // RequiredMajor returns the minimum Java major version for a Minecraft version.
 func RequiredMajor(mcVersion string) int {
 	parts := strings.Split(mcVersion, ".")
+	// Year-based versions (26.1, 26.3, ...) need Java 25; classic ones start with 1.
+	if first, _ := strconv.Atoi(digits(parts[0])); first >= 2 {
+		if first >= 26 {
+			return 25
+		}
+		return 21
+	}
 	minor, patch := 0, 0
 	if len(parts) > 1 {
 		minor, _ = strconv.Atoi(parts[1])

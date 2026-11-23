@@ -144,9 +144,14 @@ These are hard requirements; reviewers will request changes if they are not met.
   ```
 
   Optional environment variables: `MSM_E2E_LIVE_MC` (Minecraft version, default `1.21.11`) and
-  `MSM_E2E_LIVE_PORT` (server port, default `25599`; the next port is used too).
+  `MSM_E2E_LIVE_PORT` (server port, default `25599`; the next two ports are used too). To also deploy a
+  Paper server to a remote host, start an `msmd` and set `MSM_E2E_LIVE_MSMD_URL` (for example
+  `https://127.0.0.1:18444`) and `MSM_E2E_LIVE_MSMD_TOKEN`.
 - **Daemon end-to-end checks** live in `daemon/scripts/smoke.sh`. Every check must assert
-  (exit non-zero on failure), not just print.
+  (exit non-zero on failure), not just print. It also asserts input validation (offline). With
+  `MSMD_SMOKE_LIVE=1` it additionally provisions, boots, stops and deletes a real Paper server with
+  the `aikar` JVM profile (needs network; never runs in CI). Optional variables: `MSMD_SMOKE_MC`
+  (Minecraft version, default `1.21.11`) and `MSMD_SMOKE_GAME_PORT` (default `25598`).
 - Bug fixes should include a regression test whenever practical.
 
 ## Coding style

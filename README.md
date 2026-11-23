@@ -19,9 +19,9 @@ from a single window. No batch scripts, no manual EULA edits.
 - **Mod loaders** — install **Forge**, **NeoForge**, **Fabric**, or **Quilt** with the
   correct launch logic per loader.
 - **Plugin platforms** — run **Paper**, **Purpur**, or **Folia** (aimed at large player
-  counts) for local servers. Builds are chosen in the wizard and verified against the
-  project's published checksum. An optional "Optimized JVM flags" profile applies Aikar's
-  G1GC flags. Remote hosts (`msmd`) do not support these engines or the JVM profile yet.
+  counts), locally or on remote hosts (`msmd`). Builds are chosen in the wizard and verified
+  against the project's published checksum. An optional "Optimized JVM flags" profile applies
+  Aikar's G1GC flags. Plugin management in the app is local-only.
 - **Mod, plugin & modpack management** — search and install mods from **Modrinth** and
   **CurseForge** (plugins from Modrinth only), toggle them on/off, and remove them.
 - **Live console** — real-time log streaming with command input, straight to the server's stdin.
