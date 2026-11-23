@@ -57,7 +57,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@playwright/test": "^1.65.1",
     "@tanstack/router-plugin": "^1.95.0",
-    "@types/adm-zip": "^0.5.8",
+    "@types/adm-zip": "^0.6.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/pidusage": "^2.0.5",
     "@types/react": "^19.0.0",
