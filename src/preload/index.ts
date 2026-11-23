@@ -11,7 +11,10 @@ import type {
   HostInfo,
   RemoteServer,
   AddHostInput,
-  CreateRemoteServerInput
+  CreateRemoteServerInput,
+  BackupInfo,
+  BackupProgress,
+  RestoreBackupOptions
 } from '../shared/types'
 
 /** Typed API exposed to the renderer process via contextBridge */
@@ -33,6 +36,25 @@ const api = {
     ipcRenderer.invoke(IPC_CHANNELS.SERVER_UPDATE_SETTINGS, { serverId, settings }),
 
   deleteServer: (serverId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.SERVER_DELETE, serverId),
+
+  // ─── Backups ───────────────────────────────────────────
+  listBackups: (serverId: string): Promise<BackupInfo[]> => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_LIST, serverId),
+
+  createBackup: (serverId: string): Promise<BackupInfo> => ipcRenderer.invoke(IPC_CHANNELS.BACKUP_CREATE, serverId),
+
+  deleteBackup: (serverId: string, backupId: string): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.BACKUP_DELETE, { serverId, backupId }),
+
+  restoreBackup: (serverId: string, backupId: string, options?: RestoreBackupOptions): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.BACKUP_RESTORE, { serverId, backupId, options }),
+
+  onBackupProgress: (callback: (progress: BackupProgress) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, progress: BackupProgress) => callback(progress)
+    ipcRenderer.on(IPC_EVENTS.BACKUP_PROGRESS, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_EVENTS.BACKUP_PROGRESS, handler)
+    }
+  },
 
   // ─── Console ──────────────────────────────────────────
   sendCommand: (serverId: string, command: string): Promise<boolean> =>

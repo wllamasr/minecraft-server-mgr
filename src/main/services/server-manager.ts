@@ -15,6 +15,7 @@ import { downloadServerSoftware } from './server-software'
 import { fetchJson } from '../utils/http'
 import { verifyFileChecksum } from '../utils/checksum'
 import { stopProcess } from '../utils/graceful-stop'
+import { busyKind, cancelAllBusy, cancelBusy } from './server-busy'
 import { applyModpack } from './modpack-manager'
 import log from '../utils/logger'
 import { IPC_EVENTS } from '../../shared/constants'
@@ -258,6 +259,13 @@ async function provisionServer(
 export function startServer(serverId: string): void {
   if (shuttingDown) throw new Error('The app is shutting down')
   if (deleting.has(serverId)) throw new Error('Server is being deleted')
+  // Starting would change the files a backup is copying, or run a world that
+  // is in the middle of being replaced.
+  const busy = busyKind(serverId)
+  if (busy === 'restore') throw new Error('This server is being restored from a backup')
+  if (busy === 'backup' && !runningServers.has(serverId)) {
+    throw new Error('A backup of this server is in progress; start it when the backup has finished')
+  }
   cancelAutoRestart(serverId)
   if (runningServers.has(serverId)) {
     throw new Error('Server is already running')
@@ -272,6 +280,14 @@ export function startServer(serverId: string): void {
   if (!server) throw new Error(`Server not found: ${serverId}`)
 
   const serverDir = server.absolutePath
+  // A restore that was cut off (the app was killed) leaves the previous files
+  // in this folder and the server directory half replaced.
+  if (existsSync(`${serverDir}.restore-aside`)) {
+    throw new Error(
+      `A restore of this server did not finish cleanly. The files it replaced are in ${serverDir}.restore-aside; ` +
+        'move back what you need and remove that folder before starting the server.'
+    )
+  }
   if (!existsSync(join(serverDir, 'server.jar'))) {
     throw new Error(`server.jar not found in ${serverDir}`)
   }
@@ -406,7 +422,12 @@ export function stopServer(serverId: string): Promise<void> {
   running.status = 'stopping'
   broadcastStatus(serverId, 'stopping')
 
-  running.stopping = stopProcess(running.process, {
+  // A backup pauses world saving while it copies. Stopping wins: the backup
+  // is cancelled and has turned saving back on before the server is told to
+  // stop.
+  const backupCancelled = busyKind(serverId) === 'backup' ? cancelBusy(serverId, 'the server is stopping') : Promise.resolve()
+
+  running.stopping = backupCancelled.then(() => stopProcess(running.process, {
     requestStop: () => {
       consoleSendCommand(serverId, 'stop')
     },
@@ -419,7 +440,7 @@ export function stopServer(serverId: string): Promise<void> {
         'WARN'
       )
     }
-  }).then(() => {
+  })).then(() => {
     const child = running.process
     if (child.exitCode === null && child.signalCode === null && runningServers.get(serverId) === running) {
       // Even the kill had no effect. Allow another stop attempt later.
@@ -481,6 +502,11 @@ export function updateServerSettings(serverId: string, input: UpdateServerSettin
 }
 
 /** True once the app has begun quitting. */
+/** True while a server is in the middle of being deleted. */
+export function isBeingDeleted(serverId: string): boolean {
+  return deleting.has(serverId)
+}
+
 export function isShuttingDown(): boolean {
   return shuttingDown
 }
@@ -498,6 +524,8 @@ export async function stopAllServers(): Promise<void> {
   shuttingDown = true
   for (const serverId of [...restartTimers.keys()]) cancelAutoRestart(serverId)
 
+  await cancelAllBusy('the app is closing')
+
   const ids = [...runningServers.keys()]
   if (ids.length === 0) return
   log.info(`[ServerManager] Stopping ${ids.length} running server(s) before quitting`)
@@ -514,6 +542,9 @@ export async function deleteServer(serverId: string): Promise<void> {
 }
 
 async function removeServer(serverId: string): Promise<void> {
+  // A backup in flight is cancelled; a restore that is already replacing
+  // files is waited for.
+  await cancelBusy(serverId, 'the server is being deleted')
   cancelAutoRestart(serverId)
   restartHistory.delete(serverId)
 

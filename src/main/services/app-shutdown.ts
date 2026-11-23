@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { IPC_EVENTS } from '../../shared/constants'
 import { runningServerCount, stopAllServers } from './server-manager'
+import { busyCount } from './server-busy'
 import log from '../utils/logger'
 
 /**
@@ -16,7 +17,8 @@ let finished = false
 /** True while there is something to wait for before the app may exit. */
 export function mustHoldExit(): boolean {
   if (finished) return false
-  return stopping !== undefined || runningServerCount() > 0
+  // A backup or restore in flight is wound down first as well.
+  return stopping !== undefined || runningServerCount() > 0 || busyCount() > 0
 }
 
 /**

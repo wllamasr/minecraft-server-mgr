@@ -8,6 +8,28 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Backups** for local servers: a new **Backups** tab on the server page with **Back up now**,
+  the list of backups, **Restore** and **Delete**.
+  - A backup is a standard zip of the server folder (world, settings, mods or plugins, the server
+    jar), without `logs`, `crash-reports`, `debug`, `cache`, `libraries`, `versions`,
+    `modpack.mrpack` and `session.lock` files; links are skipped. Backups are kept outside the server folder, in
+    `backups/<server id>/` under the app data folder.
+  - A running server can be backed up: the app sends `save-off` and `save-all flush`, waits for
+    the server to confirm, copies, and sends `save-on`. If the server does not confirm, the backup
+    fails instead of producing an unreliable copy.
+  - Restoring needs the server to be stopped. The backup is unpacked completely first and then
+    swapped in; if anything fails the server files are put back as they were. Files that are not
+    part of backups (logs, libraries) are left alone, and everything else is replaced, so no file
+    from after the backup survives. By default the current files are backed up first ("before
+    restore" in the list), so a restore can be undone.
+  - Stopping, restarting or deleting a server, or closing the app, cancels a backup in progress.
+    A server cannot be started while a backup of it (stopped) or a restore is in progress.
+  - Deleting a server deletes its backups too; the confirmation says so.
+  - Not included yet: scheduled backups, automatic clean-up of old backups, and backups of
+    servers on remote hosts.
+- IPC channels `backup:list`, `backup:create`, `backup:delete`, `backup:restore` and the event
+  `event:backup-progress`. See [docs/IPC.md](docs/IPC.md).
+
 - **Paper**, **Purpur** and **Folia** server engines (plugin platforms aimed at large player
   counts) in the create-server wizard, for local servers. The Minecraft version list is fetched
   live from the project (PaperMC Fill v3 API, Purpur API) and lists release versions only. You

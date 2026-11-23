@@ -51,6 +51,8 @@
     "react-markdown": "^10.1.0",
     "recharts": "^3.10.1",
     "uuid": "^14.0.2",
+    "yauzl": "^3.4.0",
+    "yazl": "^3.3.1",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -61,6 +63,8 @@
     "@types/pidusage": "^2.0.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
     "@vitejs/plugin-react": "^6.3.0",
     "drizzle-kit": "^0.31.10",
     "electron": "^45.4.1",

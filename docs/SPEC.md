@@ -106,7 +106,36 @@ control.
   that does not exist that day fires once, an hour later). Schedules only run while the app is
   running. The `msmd` daemon applies the same rules on the host's clock.
 - **FR-13** Delete stops the server if running, removes its DB row, and deletes its
-  directory. Failure to delete files is logged but does not abort the row removal.
+  directory and its backups. Failure to delete files is logged but does not abort the row
+  removal.
+- **FR-13a** The user can **back up** a local server on demand. A backup is a zip archive of
+  the server directory without the top-level entries `logs`, `crash-reports`, `debug`, `cache`,
+  `libraries`, `versions`, `modpack.mrpack` and without `session.lock` files; symbolic links are
+  skipped. It is stored under `<userData>/backups/<server id>/<id>.zip`, written as `.part` and
+  renamed when complete, and carries a manifest (server, Minecraft version, file count) in the
+  zip comment. Archives are streamed, never held in memory, and use zip64 when needed. A backup
+  is refused when the free space on the backup volume is below the size of the files plus a
+  margin; the check is skipped when the free space cannot be read.
+- **FR-13b** A **running** server is backed up consistently: `save-off`, `save-all flush`, wait
+  for the server's own confirmation line (chat cannot fake it), copy, then `save-on` (not sent
+  if saving was already off). No confirmation within the time limit fails the backup.
+- **FR-13c** The user can **restore** a backup onto a stopped server. The archive is validated
+  (no links, no paths outside the server directory, no entries backups do not cover) and
+  unpacked to a staging directory beside the server directory; then the covered top-level
+  entries are moved aside and the staged ones moved in. A failure moves everything back;
+  if that cannot be done, or the replaced files cannot be removed afterwards, they stay in
+  `<server dir>.restore-aside`, the error names that folder, and the server cannot be started
+  until it is gone. An archive without the app's manifest, with no files, or with a file count
+  that differs from its manifest is refused.
+  Covered files missing from the backup do not survive (this includes links and files that
+  could not be read when the backup was made); uncovered entries are untouched. By
+  default a `pre-restore` backup of the current files is made first. After a restore, mods the
+  app had on record whose files are no longer there are dropped from the list and the enabled
+  flag of the rest follows the files; files the app did not know about are not added.
+- **FR-13d** One backup or restore per server at a time. Stop, restart, delete and app exit
+  cancel a backup in flight (saving is turned back on before the stop command is sent); a
+  restore that has begun replacing files runs to completion first. A server cannot be started
+  during a restore, nor during a backup made while it was stopped.
 
 ### 4.3 Java resolution
 

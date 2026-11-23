@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { Title, Stack, Paper, Group, Text, Badge, Button, ActionIcon, Tooltip, Tabs, RingProgress, Loader } from '@mantine/core'
-import { IconPlayerPlay, IconPlayerStop, IconRefresh, IconTrash, IconTerminal2, IconSettings, IconPackage } from '@tabler/icons-react'
+import { IconPlayerPlay, IconPlayerStop, IconRefresh, IconTrash, IconTerminal2, IconSettings, IconPackage, IconArchive } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { notifications } from '@mantine/notifications'
@@ -11,6 +11,7 @@ import { ServerMods } from '../../components/servers/ServerMods'
 import { ServerConsole } from '../../components/servers/ServerConsole'
 import { ServerPropertiesEditor } from '../../components/servers/ServerPropertiesEditor'
 import { ServerRestartSchedule } from '../../components/servers/ServerRestartSchedule'
+import { ServerBackups } from '../../components/servers/ServerBackups'
 import { useState, useEffect } from 'react'
 
 export const Route = createFileRoute('/servers/$serverId')({
@@ -189,6 +190,9 @@ function ServerDetailPage() {
           <Tabs.Tab value="mods" leftSection={<IconPackage size={14} />}>
             {isPluginPlatform(server.modLoader) ? 'Plugins' : 'Mods'}
           </Tabs.Tab>
+          <Tabs.Tab value="backups" leftSection={<IconArchive size={14} />}>
+            Backups
+          </Tabs.Tab>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={14} />}>
             Settings
           </Tabs.Tab>
@@ -305,6 +309,10 @@ function ServerDetailPage() {
 
         <Tabs.Panel value="mods" pt="xl">
           <ServerMods server={server} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="backups" pt="xl">
+          <ServerBackups server={server} />
         </Tabs.Panel>
 
         <Tabs.Panel value="settings" pt="xl">

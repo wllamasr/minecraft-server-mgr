@@ -107,6 +107,42 @@ if you can. Once this has started, the servers stop and the app closes even if y
 shutdown. Servers on a remote host are not affected: they keep running
 when you quit the app, and are stopped cleanly when the `msmd` service on that host is stopped.
 
+### Backups
+
+Open a server and choose the **Backups** tab.
+
+- **Back up now** makes a backup of the world, the settings (`server.properties`, ops, whitelist,
+  configuration folders) and the mods or plugins. You can do this while the server is running:
+  the app pauses world saving for the copy and turns it back on afterwards, and players can keep
+  playing. The console shows when the backup starts and finishes.
+- **Restore** replaces the server's files with those of a backup. Stop the server first. Leave
+  "Back up the current files first" ticked and the state before the restore is kept as a backup
+  marked *before restore*, so you can go back. Everything that changed after the chosen backup is
+  otherwise lost, including mods or plugins added since.
+- **Delete** removes a backup for good.
+
+A backup is an ordinary `.zip` file; you can open it or copy it elsewhere. Logs, crash reports and
+the files the server software downloads for itself (`libraries`, `versions`, `cache`) are not in
+it, and a restore leaves those alone. Links (symbolic links, junctions) inside the server folder
+are not backed up either, and a restore removes them.
+
+If a restore fails, the server's files are put back as they were. In the rare case that this is
+not possible, the error message names a folder ending in `.restore-aside` next to the server
+folder: it holds the files that were being replaced, and the server will not start until you
+have moved back what you need and removed it.
+
+Things to know:
+
+- Backups are only made when you ask. There are no scheduled backups yet, and old backups are
+  never deleted automatically, so keep an eye on disk space. Each backup is about the size of the
+  world.
+- Backups are stored on the same computer (see
+  [Settings and data locations](#11-settings-and-data-locations)). They protect against a broken
+  world or a bad change, not against a failed disk; copy the zip files somewhere else for that.
+- Stopping or restarting the server, or closing the app, cancels a backup that is in progress.
+- Deleting a server deletes its backups.
+- Backups are for local servers. Servers on remote hosts do not have them yet.
+
 ## 5. The live console
 
 The console streams the server log in real time. Type a command in the input box at the bottom and
@@ -206,9 +242,11 @@ Open **Settings** to change:
 | ------------------------ | ----------------------------------------------------- |
 | Servers (worlds, jars)   | The Servers Directory set in Settings                 |
 | Logs                     | `%APPDATA%\minecraft-server-manager\logs\`            |
+| Backups                  | `%APPDATA%\minecraft-server-manager\backups\`         |
 
-**Back up before big changes.** To back up a server, stop it and copy its folder from the Servers
-Directory. Automated backups are on the roadmap.
+**Back up before big changes.** Use the **Backups** tab of the server (see
+[Starting and stopping](#4-starting-and-stopping)). Backups live on the same disk as the app data,
+so copy the zip files elsewhere if you need to survive a disk failure.
 
 ## 12. Updates
 

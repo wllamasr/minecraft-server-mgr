@@ -15,7 +15,7 @@
   "delete": "Delete Server",
   "console": "Console",
   "config": "Configuration",
-  "confirmDelete": "Are you sure you want to delete \"{{name}}\"? This will remove all server files.",
+  "confirmDelete": "Are you sure you want to delete \"{{name}}\"? This will remove all server files and all backups of this server.",
   "creating": "Creating server...",
   "downloadingJar": "Downloading server jar...",
   "serverCreated": "Server \"{{name}}\" created successfully!",

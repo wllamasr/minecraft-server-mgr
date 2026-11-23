@@ -10,6 +10,12 @@ export const IPC_CHANNELS = {
   SERVER_RESTART: 'server:restart',
   SERVER_UPDATE_SETTINGS: 'server:update-settings',
 
+  // Backups
+  BACKUP_LIST: 'backup:list',
+  BACKUP_CREATE: 'backup:create',
+  BACKUP_DELETE: 'backup:delete',
+  BACKUP_RESTORE: 'backup:restore',
+
   // Console
   CONSOLE_SEND_COMMAND: 'console:send-command',
 
@@ -46,5 +52,6 @@ export const IPC_EVENTS = {
   SERVER_METRICS: 'event:server-metrics',
   DOWNLOAD_PROGRESS: 'event:download-progress',
   APP_UPDATE_DOWNLOADED: 'event:app-update-downloaded',
-  APP_SHUTTING_DOWN: 'event:app-shutting-down'
+  APP_SHUTTING_DOWN: 'event:app-shutting-down',
+  BACKUP_PROGRESS: 'event:backup-progress'
 } as const

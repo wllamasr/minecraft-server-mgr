@@ -136,7 +136,7 @@ telemetry are implemented. Areas open for contribution:
 
 - Automated tests for the mod-manager and server-manager services (currently only pure
   helpers are covered).
-- Backup / world import & export.
+- Scheduled backups, backups on remote hosts, world import & export.
 - Scheduled restarts and crash-recovery policies.
 - Cross-platform packaging (macOS / Linux).
 

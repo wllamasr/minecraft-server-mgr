@@ -5,6 +5,7 @@ import * as consoleManager from '../services/console-manager'
 import * as configManager from '../services/config-manager'
 import * as modManager from '../services/mod-manager'
 import * as hostsManager from '../services/hosts-manager'
+import * as backupManager from '../services/backup-manager'
 import { shutdownPendingCount } from '../services/app-shutdown'
 import { detectJavaInstallations } from '../services/java-detector'
 import { getLoaderVersions } from '../services/mod-loader-installer'
@@ -49,7 +50,24 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.SERVER_DELETE, async (_e, serverId: string) => {
     await serverManager.deleteServer(serverId)
+    // Its backups go with it: nothing in the app could show or restore them.
+    await backupManager.deleteAllBackups(serverId).catch((err) => {
+      log.warn(`[IPC] Could not remove the backups of ${serverId}:`, err)
+    })
   })
+
+  // ─── Backups ───────────────────────────────────────────
+  ipcMain.handle(IPC_CHANNELS.BACKUP_LIST, (_e, serverId: string) => backupManager.listBackups(serverId))
+
+  ipcMain.handle(IPC_CHANNELS.BACKUP_CREATE, (_e, serverId: string) => backupManager.createBackup(serverId))
+
+  ipcMain.handle(IPC_CHANNELS.BACKUP_DELETE, (_e, { serverId, backupId }) =>
+    backupManager.deleteBackup(serverId, backupId)
+  )
+
+  ipcMain.handle(IPC_CHANNELS.BACKUP_RESTORE, (_e, { serverId, backupId, options }) =>
+    backupManager.restoreBackup(serverId, backupId, options)
+  )
 
   // ─── Console ───────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.CONSOLE_SEND_COMMAND, (_e, { serverId, command }: { serverId: string; command: string }) => {
