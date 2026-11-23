@@ -397,8 +397,44 @@ export async function swapIntoServerDir(serverDir: string, stageDir: string, asi
   try {
     await rm(asideDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
   } catch {
-    throw new Error(
+    throw new RestoreLeftoverError(
       `The backup was restored, but the previous files could not be removed. Delete the folder ${asideDir} by hand before starting the server.`
     )
   }
+}
+
+/** The swap went through; only the folder with the replaced files is still there. */
+export class RestoreLeftoverError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RestoreLeftoverError'
+  }
+}
+
+/**
+ * What a restore needs to know from the comment of an archive, or an error
+ * when the archive is not a usable backup. An archive without the manifest
+ * this app writes, or with no files, would only empty the server.
+ */
+export function restorableManifest(comment: string): { fileCount: number; totalBytes: number } {
+  let manifest: unknown
+  try {
+    manifest = JSON.parse(comment)
+  } catch {
+    manifest = null
+  }
+  if (!manifest || typeof manifest !== 'object') {
+    throw new Error('This file is damaged or is not a backup made by this app')
+  }
+  const { fileCount, totalBytes } = manifest as { fileCount?: unknown; totalBytes?: unknown }
+  if (
+    typeof fileCount !== 'number' ||
+    !Number.isInteger(fileCount) ||
+    fileCount < 1 ||
+    typeof totalBytes !== 'number' ||
+    !(totalBytes >= 0)
+  ) {
+    throw new Error('This backup is damaged: it does not say what it contains')
+  }
+  return { fileCount, totalBytes }
 }

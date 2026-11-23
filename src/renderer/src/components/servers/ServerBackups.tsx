@@ -45,7 +45,7 @@ export function ServerBackups({ server }: Props) {
     const message = err.message.replace(/^Error invoking remote method '[^']+': (\w*Error: )?/, '')
     // Cancelled because the server was stopped or deleted: expected, not a fault.
     if (message.startsWith('Cancelled')) {
-      notifications.show({ message: `Backup cancelled${message.slice('Cancelled'.length)}.`, color: 'yellow' })
+      notifications.show({ message: `${message}.`, color: 'yellow' })
       return
     }
     notifications.show({ title: 'Error', message, color: 'red', autoClose: 10000 })

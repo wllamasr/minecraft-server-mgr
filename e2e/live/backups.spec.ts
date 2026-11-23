@@ -1,5 +1,5 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { appendFileSync, copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 
@@ -128,6 +128,16 @@ test('backs up a running server, restores it and boots the restored world', asyn
     // The cancelled backup left nothing behind, and the server still saved on its way down.
     expect(readdirSync(backupDir)).toEqual([`${hot.id}.zip`])
     expect(readFileSync(join(dir, 'logs', 'latest.log'), 'utf8')).toMatch(/All dimensions are saved/)
+
+    // ── A file that is not one of the app's backups is refused ──
+    const fakeId = '20200101-000000-manual'
+    copyFileSync(join(dir, 'server.jar'), join(backupDir, `${fakeId}.zip`))
+    const worldBefore = readdirSync(join(dir, 'world')).sort()
+    expect(await failure('restoreBackup', id, fakeId, { backupFirst: false })).toMatch(/damaged/)
+    expect(readdirSync(join(dir, 'world')).sort()).toEqual(worldBefore)
+    expect(existsSync(`${dir}.restore-aside`)).toBe(false)
+    await api('deleteBackup', id, fakeId)
+    expect(readdirSync(backupDir)).toEqual([`${hot.id}.zip`])
 
     // ── Damage the server, then restore ────────────────────
     const propsBefore = readFileSync(join(dir, 'server.properties'), 'utf8')

@@ -9,6 +9,7 @@ import {
   isBackedUpTopLevel,
   planBackup,
   readArchiveComment,
+  restorableManifest,
   swapIntoServerDir,
   writeArchive
 } from './backup-archive'
@@ -189,8 +190,16 @@ describe('backup and restore', () => {
     await expect(
       writeArchive(plan, join(work, 'c.zip'), { signal: controller.signal, onProgress: () => controller.abort() })
     ).rejects.toBeInstanceOf(BackupAbortedError)
-    await new Promise((r) => setTimeout(r, 100))
-    renameSync(join(server, 'world'), join(server, 'world-moved'))
+    // The handles close shortly after the failure, not within it.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        renameSync(join(server, 'world'), join(server, 'world-moved'))
+        break
+      } catch (err) {
+        if (attempt >= 40) throw err
+        await new Promise((r) => setTimeout(r, 50))
+      }
+    }
     expect(existsSync(join(server, 'world-moved/level.dat'))).toBe(true)
   })
 
@@ -250,6 +259,24 @@ describe('extractArchive', () => {
     const stage = join(work, 'stage')
     mkdirSync(stage)
     await expect(extractArchive(zip, stage)).rejects.toThrow()
+  })
+})
+
+describe('restorableManifest', () => {
+  it('accepts the manifest of a real backup', () => {
+    expect(restorableManifest(JSON.stringify({ format: 1, fileCount: 12, totalBytes: 3456, serverName: 'x' }))).toEqual({
+      fileCount: 12,
+      totalBytes: 3456
+    })
+  })
+
+  it('refuses an archive that is not a backup or says nothing about its content', () => {
+    for (const comment of ['', 'not json', 'null', '[]', '"text"', '{}', '{"fileCount":0,"totalBytes":0}']) {
+      expect(() => restorableManifest(comment), comment).toThrow(/damaged/)
+    }
+    expect(() => restorableManifest('{"fileCount":3}')).toThrow(/damaged/)
+    expect(() => restorableManifest('{"fileCount":"3","totalBytes":10}')).toThrow(/damaged/)
+    expect(() => restorableManifest('{"fileCount":1.5,"totalBytes":10}')).toThrow(/damaged/)
   })
 })
 

@@ -13,6 +13,8 @@ import {
   extractArchive,
   planBackup,
   readArchiveComment,
+  restorableManifest,
+  RestoreLeftoverError,
   swapIntoServerDir,
   writeArchive,
   type ArchiveProgress
@@ -411,15 +413,13 @@ async function runRestore(
 
   // An archive without the manifest this app writes, or with no files, is not
   // a backup: restoring it would only empty the server.
-  let manifest: Partial<Manifest>
+  let comment: string
   try {
-    manifest = await readManifest(zipPath)
+    comment = await readArchiveComment(zipPath)
   } catch {
     throw new Error('This file is damaged or is not a backup made by this app')
   }
-  if (typeof manifest.fileCount !== 'number' || manifest.fileCount < 1 || typeof manifest.totalBytes !== 'number') {
-    throw new Error('This backup is damaged: it does not say what it contains')
-  }
+  const manifest = restorableManifest(comment)
 
   pushLog(serverId, `Restoring backup ${backupId}...`, 'INFO')
   let replacing = false
@@ -444,7 +444,14 @@ async function runRestore(
     enterPointOfNoReturn()
     replacing = true
     sendProgress({ serverId, operation: 'restore', phase: 'replacing', doneBytes: 0, totalBytes: 0 })
-    await swapIntoServerDir(serverDir, stageDir, asideDir)
+    let leftover: RestoreLeftoverError | undefined
+    try {
+      await swapIntoServerDir(serverDir, stageDir, asideDir)
+    } catch (err) {
+      // The backup is in place; only the replaced files could not be removed.
+      if (!(err instanceof RestoreLeftoverError)) throw err
+      leftover = err
+    }
     pushLog(serverId, `Backup ${backupId} restored: ${fileCount} file(s).`, 'INFO')
     try {
       reconcileInstalledMods(serverId, serverDir, server.modLoader ?? null)
@@ -452,13 +459,18 @@ async function runRestore(
       // The files are restored; only the list in the Mods tab may be off.
       log.warn(`[Backup] Could not bring the mod list of ${serverId} in line after the restore:`, err)
     }
+    if (leftover) throw leftover
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     pushLog(
       serverId,
       // Once files were being moved, the error itself says where things stand.
-      replacing ? `Restore failed: ${message}` : `Restore failed, the server files were not touched: ${message}`,
-      'ERROR'
+      err instanceof RestoreLeftoverError
+        ? message
+        : replacing
+          ? `Restore failed: ${message}`
+          : `Restore failed, the server files were not touched: ${message}`,
+      err instanceof RestoreLeftoverError ? 'WARN' : 'ERROR'
     )
     throw err
   } finally {
