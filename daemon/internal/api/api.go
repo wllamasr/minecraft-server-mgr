@@ -56,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/servers/{id}/backups/{backupId}/restore", s.handleRestoreBackup)
 	mux.HandleFunc("GET /v1/servers/{id}/addons", s.handleListAddons)
 	mux.HandleFunc("POST /v1/servers/{id}/addons", s.handleInstallAddon)
+	mux.HandleFunc("POST /v1/servers/{id}/addons/{file}/update", s.handleUpdateAddonVersion)
 	mux.HandleFunc("PATCH /v1/servers/{id}/addons/{file}", s.handleUpdateAddon)
 	mux.HandleFunc("DELETE /v1/servers/{id}/addons/{file}", s.handleDeleteAddon)
 	mux.HandleFunc("GET /v1/servers/{id}/logs", s.handleLogs)

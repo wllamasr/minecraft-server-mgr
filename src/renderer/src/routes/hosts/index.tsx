@@ -13,6 +13,7 @@ import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
 import type { RemoteHost, RemoteServer, HostInfo } from '@shared/types'
 import { isValidRestartSchedule } from '@shared/utils/restart-schedule'
+import { isPluginOperation } from '@shared/utils/remote-addons'
 import { engineLabel, isPluginPlatform } from '@shared/constants'
 import { modals } from '@mantine/modals'
 import { RemoteBackupsModal } from '../../components/hosts/RemoteBackupsModal'
@@ -29,6 +30,7 @@ const LOADERS = ['(none / vanilla)', 'paper', 'purpur', 'folia', 'fabric', 'quil
 function operationLabel(kind: string): string {
   if (kind === 'backup') return 'backing up'
   if (kind === 'install') return 'installing a plugin'
+  if (kind === 'update') return 'updating a plugin'
   return 'restoring a backup'
 }
 
@@ -336,14 +338,14 @@ function HostDetail({ host }: { host: RemoteHost }) {
               </Tooltip>
               <Tooltip label="Backups">
                 <ActionIcon variant="light" aria-label="Backups"
-                  color={(s.operation && s.operation.kind !== 'install') || s.backupSchedule ? 'blue' : 'gray'}
+                  color={(s.operation && !isPluginOperation(s.operation.kind)) || s.backupSchedule ? 'blue' : 'gray'}
                   onClick={() => setBackupsServerId(s.id)}>
                   <IconArchive size={16} />
                 </ActionIcon>
               </Tooltip>
               {isPluginPlatform(s.modLoader) && (
                 <Tooltip label="Plugins">
-                  <ActionIcon variant="light" aria-label="Plugins" color={s.operation?.kind === 'install' ? 'blue' : 'gray'}
+                  <ActionIcon variant="light" aria-label="Plugins" color={s.operation && isPluginOperation(s.operation.kind) ? 'blue' : 'gray'}
                     disabled={s.status === 'provisioning'}
                     onClick={() => setPluginsServerId(s.id)}>
                     <IconPuzzle size={16} />

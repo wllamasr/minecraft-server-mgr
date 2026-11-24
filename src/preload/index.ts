@@ -176,6 +176,9 @@ const api = {
   /** Has the host install a Modrinth version; the server's `lastOperation` with this id tells how it ended. */
   installRemoteAddon: (hostId: string, serverId: string, versionId: string): Promise<{ operationId: string }> =>
     ipcRenderer.invoke('hosts:addon-install', { hostId, serverId, versionId }),
+  /** Has the host replace a plugin installed from Modrinth with another version; the server must be stopped. */
+  updateRemoteAddon: (hostId: string, serverId: string, file: string, versionId: string): Promise<{ operationId: string }> =>
+    ipcRenderer.invoke('hosts:addon-update', { hostId, serverId, file, versionId }),
   /** Turns a plugin of a stopped remote server off or on. */
   setRemoteAddonEnabled: (hostId: string, serverId: string, file: string, enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('hosts:addon-toggle', { hostId, serverId, file, enabled }),

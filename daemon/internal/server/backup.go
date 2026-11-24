@@ -46,6 +46,11 @@ func IsConflict(err error) bool {
 // start or a stop neither waits for it nor ends it.
 const kindInstall = "install"
 
+// kindUpdate is the kind of the operation that replaces a plugin with a newer
+// version. The jar is swapped, so the server must be stopped while it runs and
+// a start is refused until it has ended, as for a restore.
+const kindUpdate = "update"
+
 // OperationState is a backup, a restore or the installation of a plugin in
 // flight.
 type OperationState struct {
@@ -249,7 +254,7 @@ func (m *Manager) beginOperation(id, kind string) (*operation, store.Server, *ru
 	case m.ops[id] != nil && m.ops[id].state.Kind == kindInstall:
 		return refuse("A plugin is being installed on this server; try again once that is done")
 	case m.ops[id] != nil:
-		return refuse("A backup or a restore of this server is already in progress")
+		return refuse("A backup, a restore or a plugin update of this server is already in progress")
 	case m.provisioning[id] == StatusProvisioning:
 		return refuse("server is still being provisioned")
 	case m.provisioning[id] != "" && kind == kindInstall:
@@ -259,6 +264,8 @@ func (m *Manager) beginOperation(id, kind string) (*operation, store.Server, *ru
 	case kind == kindInstall:
 		// A plugin is a new file in a folder: it can be added whatever the
 		// server is doing, and is loaded the next time the server starts.
+	case kind == kindUpdate && (rs != nil || m.starting[id] > 0 || m.restarting[id] || m.restartTimers[id] != nil):
+		return refuse("Stop the server before updating a plugin")
 	case m.starting[id] > 0:
 		return refuse("The server is starting; try again once it is up")
 	case m.restarting[id]:
@@ -273,7 +280,7 @@ func (m *Manager) beginOperation(id, kind string) (*operation, store.Server, *ru
 
 	ctx, cancel := context.WithCancelCause(context.Background())
 	phase := "copying"
-	if kind == kindInstall {
+	if kind == kindInstall || kind == kindUpdate {
 		phase = "downloading"
 	}
 	op := &operation{
@@ -300,7 +307,7 @@ func (m *Manager) runOperation(op *operation, s store.Server, run func() (subjec
 		Scheduled:  op.scheduled,
 		FinishedAt: time.Now().UTC().Format(time.RFC3339),
 	}
-	if err == nil && op.state.Kind == kindInstall {
+	if err == nil && (op.state.Kind == kindInstall || op.state.Kind == kindUpdate) {
 		result.Addon = backupID
 	} else if err == nil {
 		result.BackupID = backupID

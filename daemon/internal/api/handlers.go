@@ -418,6 +418,25 @@ func (s *Server) handleInstallAddon(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "operationId": opID})
 }
 
+// handleUpdateAddonVersion starts replacing a plugin installed from Modrinth
+// with another version of the same project, and answers at once. The body
+// names the new version by its id and nothing else.
+func (s *Server) handleUpdateAddonVersion(w http.ResponseWriter, r *http.Request) {
+	body := struct {
+		VersionID string `json:"versionId"`
+	}{}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	opID, err := s.mgr.RequestAddonUpdate(r.PathValue("id"), r.PathValue("file"), body.VersionID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "operationId": opID})
+}
+
 // handleUpdateAddon turns a plugin of a stopped server off or on.
 func (s *Server) handleUpdateAddon(w http.ResponseWriter, r *http.Request) {
 	body := struct {

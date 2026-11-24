@@ -158,6 +158,12 @@ func find(dir, file string) (entry, error) {
 	return entry{}, ErrNotFound
 }
 
+// Lookup says whether the folder has a plugin by that name: ErrNotFound if not.
+func Lookup(dir, file string) error {
+	_, err := find(dir, file)
+	return err
+}
+
 func readOrigins(dir string) map[string]origin {
 	out := map[string]origin{}
 	b, err := os.ReadFile(filepath.Join(dir, originsFile))

@@ -169,6 +169,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('hosts:addon-install', (_e, { hostId, serverId, versionId }) =>
     hostsManager.installRemoteAddon(hostId, serverId, versionId)
   )
+  ipcMain.handle('hosts:addon-update', (_e, { hostId, serverId, file, versionId }) =>
+    hostsManager.updateRemoteAddon(hostId, serverId, file, versionId)
+  )
   ipcMain.handle('hosts:addon-toggle', (_e, { hostId, serverId, file, enabled }) =>
     hostsManager.setRemoteAddonEnabled(hostId, serverId, file, enabled)
   )

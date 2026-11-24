@@ -78,3 +78,26 @@ export function pickAddonVersion(versions: readonly UnifiedModVersion[]): Unifie
   const usable = versions.filter((v) => isModrinthVersionId(v.id))
   return usable.find((v) => v.type === 'release') ?? usable[0] ?? null
 }
+
+/** Whether an operation of a remote server changes its plugins. */
+export function isPluginOperation(kind: string): boolean {
+  return kind === 'install' || kind === 'update'
+}
+
+/**
+ * The version a plugin installed from Modrinth can be updated to: the one
+ * pickAddonVersion picks, when it is older than the installed one's place in
+ * the list (versions are newest first) and is not that one. Null when there is
+ * nothing newer to offer, or the installed version is no longer listed.
+ */
+export function addonUpdateTo(
+  versions: readonly UnifiedModVersion[],
+  installedVersionId: string
+): UnifiedModVersion | null {
+  const pick = pickAddonVersion(versions)
+  if (!pick) return null
+  const installedAt = versions.findIndex((v) => v.id === installedVersionId)
+  const pickAt = versions.indexOf(pick)
+  if (installedAt < 0 || installedAt <= pickAt) return null
+  return pick
+}

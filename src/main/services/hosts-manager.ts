@@ -324,6 +324,28 @@ export async function installRemoteAddon(hostId: string, serverId: string, versi
   return { operationId: res.operationId }
 }
 
+/**
+ * Have the host replace a plugin installed from Modrinth with another version
+ * of the same project. The server must be stopped; the host downloads and
+ * checks the new file before the old one is set aside. Only the version's id
+ * is sent.
+ */
+export async function updateRemoteAddon(
+  hostId: string,
+  serverId: string,
+  file: string,
+  versionId: string
+): Promise<{ operationId: string }> {
+  if (!isModrinthVersionId(versionId)) throw new Error('Invalid version')
+  const res = await remoteRequest<{ operationId: string }>(
+    connFor(hostId),
+    'POST',
+    `${addonPath(serverId, file)}/update`,
+    { versionId }
+  ).catch(plainDaemonError)
+  return { operationId: res.operationId }
+}
+
 /** Turn a plugin of a stopped remote server off or on. */
 export async function setRemoteAddonEnabled(hostId: string, serverId: string, file: string, enabled: boolean): Promise<void> {
   if (typeof enabled !== 'boolean') throw new Error('Invalid state')
