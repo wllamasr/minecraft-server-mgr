@@ -389,6 +389,59 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "operationId": opID})
 }
 
+// handleListAddons lists the plugins of a server.
+func (s *Server) handleListAddons(w http.ResponseWriter, r *http.Request) {
+	list, err := s.mgr.ListAddons(r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// handleInstallAddon starts installing a plugin from Modrinth and answers at
+// once. The body names a Modrinth version by its id and nothing else: no
+// address, no file name.
+func (s *Server) handleInstallAddon(w http.ResponseWriter, r *http.Request) {
+	body := struct {
+		VersionID string `json:"versionId"`
+	}{}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	opID, err := s.mgr.RequestAddonInstall(r.PathValue("id"), body.VersionID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "operationId": opID})
+}
+
+// handleUpdateAddon turns a plugin of a stopped server off or on.
+func (s *Server) handleUpdateAddon(w http.ResponseWriter, r *http.Request) {
+	body := struct {
+		Enabled *bool `json:"enabled"`
+	}{}
+	if err := readJSON(r, &body); err != nil || body.Enabled == nil {
+		writeError(w, http.StatusBadRequest, `the body must be {"enabled": true} or {"enabled": false}`)
+		return
+	}
+	if err := s.mgr.SetAddonEnabled(r.PathValue("id"), r.PathValue("file"), *body.Enabled); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleDeleteAddon(w http.ResponseWriter, r *http.Request) {
+	if err := s.mgr.RemoveAddon(r.PathValue("id"), r.PathValue("file")); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func writeStoreError(w http.ResponseWriter, err error) {
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "server not found")
@@ -396,6 +449,10 @@ func writeStoreError(w http.ResponseWriter, err error) {
 	}
 	if errors.Is(err, server.ErrBackupNotFound) {
 		writeError(w, http.StatusNotFound, "backup not found")
+		return
+	}
+	if errors.Is(err, server.ErrAddonNotFound) {
+		writeError(w, http.StatusNotFound, "plugin not found")
 		return
 	}
 	if server.IsConflict(err) {

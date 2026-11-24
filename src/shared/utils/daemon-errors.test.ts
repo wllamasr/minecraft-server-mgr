@@ -17,6 +17,7 @@ describe('isOlderDaemonError', () => {
   it('does not mistake a missing server or backup for a missing route', () => {
     expect(isOlderDaemonError('Daemon HTTP 404: server not found')).toBe(false)
     expect(isOlderDaemonError('Daemon HTTP 404: backup not found')).toBe(false)
+    expect(isOlderDaemonError('Daemon HTTP 404: plugin not found')).toBe(false)
   })
 
   it('leaves other errors alone', () => {

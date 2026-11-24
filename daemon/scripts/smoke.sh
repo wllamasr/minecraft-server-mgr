@@ -133,6 +133,12 @@ expect_status 404 "backups of an unknown server" GET /v1/servers/does-not-exist/
 expect_status 404 "backup of an unknown server" POST /v1/servers/does-not-exist/backups -H "$AUTH"
 expect_status 404 "restore on an unknown server" POST /v1/servers/does-not-exist/backups/20260101-000000-manual/restore -H "$AUTH"
 expect_status 404 "delete of a backup of an unknown server" DELETE /v1/servers/does-not-exist/backups/20260101-000000-manual -H "$AUTH"
+expect_status 401 "plugins without a token" GET /v1/servers/does-not-exist/addons
+expect_status 401 "plugin installation without a token" POST /v1/servers/does-not-exist/addons -H "$JSON" -d '{"versionId":"abc"}'
+expect_status 404 "plugins of an unknown server" GET /v1/servers/does-not-exist/addons -H "$AUTH"
+expect_status 404 "plugin installation on an unknown server" POST /v1/servers/does-not-exist/addons -H "$AUTH" -H "$JSON" -d '{"versionId":"abc"}'
+expect_status 404 "plugin change on an unknown server" PATCH /v1/servers/does-not-exist/addons/x.jar -H "$AUTH" -H "$JSON" -d '{"enabled":false}'
+expect_status 404 "plugin removal on an unknown server" DELETE /v1/servers/does-not-exist/addons/x.jar -H "$AUTH"
 SERVERS="$(curl -sk -H "$AUTH" "$BASE/v1/servers")"
 [ "$(printf '%s' "$SERVERS" | tr -d ' \n\r')" = "[]" ] || fail "rejected requests must not create servers, got: $SERVERS"
 echo "ok   rejected requests created nothing"
@@ -225,6 +231,59 @@ if [ -n "${MSMD_SMOKE_LIVE:-}" ]; then
     sleep 1
   done
   echo "ok   server stopped cleanly"
+
+  # Plugins: the daemon installs one from Modrinth, told only which version,
+  # and the server loads it.
+  wait_stopped() {
+    waited=0
+    until curl -sk -H "$AUTH" "$BASE/v1/servers/$SID" | grep -q '"status":"stopped"'; do
+      waited=$((waited + 1))
+      [ "$waited" -lt 60 ] || fail "server did not stop"
+      sleep 1
+    done
+  }
+  ADDONS="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$SID/addons")"
+  [ "$(printf '%s' "$ADDONS" | tr -d ' \n\r')" = "[]" ] || fail "a new server has plugins: $ADDONS"
+  echo "ok   a new server has no plugins"
+  VERSION_ID="$(curl -s -A "minecraft-server-mgr-smoke" "https://api.modrinth.com/v2/project/luckperms/version?loaders=%5B%22paper%22%5D&game_versions=%5B%22$MC%22%5D" \
+    | grep -o '"id":"[A-Za-z0-9]*"' | head -n 1 | grep -o '[A-Za-z0-9]*"$' | tr -d '"')"
+  [ -n "$VERSION_ID" ] || fail "Modrinth lists no LuckPerms version for Paper $MC"
+  expect_status 400 "a version id that is none" POST "/v1/servers/$SID/addons" -H "$AUTH" -H "$JSON" -d '{"versionId":"../x"}'
+  expect_status 202 "install LuckPerms ($VERSION_ID)" POST "/v1/servers/$SID/addons" -H "$AUTH" -H "$JSON" -d "{\"versionId\":\"$VERSION_ID\"}"
+  waited=0
+  while :; do
+    VIEW="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$SID")"
+    case "$VIEW" in
+      *'"lastOperation":{'*'"kind":"install"'*) break ;;
+    esac
+    waited=$((waited + 1))
+    [ "$waited" -lt 120 ] || fail "the installation did not end: $VIEW"
+    sleep 1
+  done
+  expect_contains "the installation went through" '"kind":"install","ok":true' "$VIEW"
+  ADDONS="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$SID/addons")"
+  expect_contains "the plugin is listed by the name it declares" '"name":"LuckPerms"' "$ADDONS"
+  expect_contains "the plugin is on" '"enabled":true' "$ADDONS"
+  expect_contains "its origin is kept" "\"versionId\":\"$VERSION_ID\"" "$ADDONS"
+  ADDON_FILE="$(printf '%s' "$ADDONS" | grep -o '"file":"[^"]*"' | head -n 1 | sed 's/^"file":"//; s/"$//')"
+  [ -f "$DATA/servers/$SID/plugins/$ADDON_FILE" ] || ls "$DATA"/servers/*/plugins/"$ADDON_FILE" >/dev/null 2>&1 || fail "the plugin's jar is not in the server's plugins folder"
+  expect_contains "the console says it was checked" "installed (checksum OK)" "$(curl -sk -H "$AUTH" "$BASE/v1/servers/$SID/logs")"
+
+  expect_status 202 "start the server with the plugin" POST "/v1/servers/$SID/start" -H "$AUTH"
+  wait_log "Enabling LuckPerms" 360
+  echo "ok   Paper loaded the plugin"
+  expect_status 409 "no removal from under a running server" DELETE "/v1/servers/$SID/addons/$ADDON_FILE" -H "$AUTH"
+  expect_status 409 "no turning off under a running server" PATCH "/v1/servers/$SID/addons/$ADDON_FILE" -H "$AUTH" -H "$JSON" -d '{"enabled":false}'
+  expect_status 202 "stop the server" POST "/v1/servers/$SID/stop" -H "$AUTH"
+  wait_stopped
+  expect_status 204 "turn the plugin off" PATCH "/v1/servers/$SID/addons/$ADDON_FILE" -H "$AUTH" -H "$JSON" -d '{"enabled":false}'
+  expect_contains "the plugin is off" '"enabled":false' "$(curl -sk -H "$AUTH" "$BASE/v1/servers/$SID/addons")"
+  expect_status 204 "remove the plugin" DELETE "/v1/servers/$SID/addons/$ADDON_FILE" -H "$AUTH"
+  expect_status 404 "remove it again" DELETE "/v1/servers/$SID/addons/$ADDON_FILE" -H "$AUTH"
+  ADDONS="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$SID/addons")"
+  [ "$(printf '%s' "$ADDONS" | tr -d ' \n\r')" = "[]" ] || fail "the plugin is still listed: $ADDONS"
+  echo "ok   the plugin is gone"
+
   expect_status 204 "delete the server" DELETE "/v1/servers/$SID" -H "$AUTH"
 fi
 

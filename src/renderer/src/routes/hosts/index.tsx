@@ -5,7 +5,7 @@ import {
 } from '@mantine/core'
 import {
   IconServer, IconPlus, IconTrash, IconPlayerPlay, IconPlayerStop,
-  IconTerminal2, IconRefresh, IconPlugConnected, IconDownload, IconClock, IconArchive
+  IconTerminal2, IconRefresh, IconPlugConnected, IconDownload, IconClock, IconArchive, IconPuzzle
 } from '@tabler/icons-react'
 import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -16,6 +16,7 @@ import { isValidRestartSchedule } from '@shared/utils/restart-schedule'
 import { engineLabel, isPluginPlatform } from '@shared/constants'
 import { modals } from '@mantine/modals'
 import { RemoteBackupsModal } from '../../components/hosts/RemoteBackupsModal'
+import { RemotePluginsModal } from '../../components/hosts/RemotePluginsModal'
 import { RemoteServerMetricsLine } from '../../components/hosts/RemoteServerMetricsLine'
 
 export const Route = createFileRoute('/hosts/')({
@@ -24,6 +25,12 @@ export const Route = createFileRoute('/hosts/')({
 
 const MC_VERSIONS = ['1.21.4', '1.21.1', '1.20.4', '1.20.1', '1.19.4', '1.18.2', '1.16.5']
 const LOADERS = ['(none / vanilla)', 'paper', 'purpur', 'folia', 'fabric', 'quilt', 'forge', 'neoforge']
+
+function operationLabel(kind: string): string {
+  if (kind === 'backup') return 'backing up'
+  if (kind === 'install') return 'installing a plugin'
+  return 'restoring a backup'
+}
 
 function statusColor(status: string): string {
   if (status === 'running') return 'emerald.4'
@@ -189,6 +196,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
   const [consoleServer, setConsoleServer] = useState<RemoteServer | null>(null)
   const [scheduleServer, setScheduleServer] = useState<RemoteServer | null>(null)
   const [backupsServerId, setBackupsServerId] = useState<string | null>(null)
+  const [pluginsServerId, setPluginsServerId] = useState<string | null>(null)
   // A host with an msmd that has no metrics is asked once, not every few
   // seconds. (HostDetail is keyed by host: this is not carried to another.)
   const [noMetrics, setNoMetrics] = useState(false)
@@ -215,6 +223,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
 
   // The live server, so the backups window follows its status and progress.
   const backupsServer = servers.find((s) => s.id === backupsServerId) ?? null
+  const pluginsServer = servers.find((s) => s.id === pluginsServerId) ?? null
 
   const confirmDelete = (s: RemoteServer): void => {
     const running = ['running', 'starting', 'stopping'].includes(s.status)
@@ -287,7 +296,7 @@ function HostDetail({ host }: { host: RemoteHost }) {
                   {engineLabel(s.modLoader)} · MC {s.minecraftVersion} · Port {s.port} · {s.maxRam}
                   {s.restartSchedule ? ` · restarts daily at ${s.restartSchedule}` : ''}
                   {s.backupSchedule ? ` · backed up daily at ${s.backupSchedule}` : ''}
-                  {s.operation ? ` · ${s.operation.kind === 'backup' ? 'backing up' : 'restoring a backup'}…` : ''}
+                  {s.operation ? ` · ${operationLabel(s.operation.kind)}…` : ''}
                 </Text>
                 {s.status === 'running' && !noMetrics && (
                   <RemoteServerMetricsLine hostId={host.id} serverId={s.id} onUnsupported={metricsUnsupported} />
@@ -326,11 +335,21 @@ function HostDetail({ host }: { host: RemoteHost }) {
                 </ActionIcon>
               </Tooltip>
               <Tooltip label="Backups">
-                <ActionIcon variant="light" aria-label="Backups" color={s.operation || s.backupSchedule ? 'blue' : 'gray'}
+                <ActionIcon variant="light" aria-label="Backups"
+                  color={(s.operation && s.operation.kind !== 'install') || s.backupSchedule ? 'blue' : 'gray'}
                   onClick={() => setBackupsServerId(s.id)}>
                   <IconArchive size={16} />
                 </ActionIcon>
               </Tooltip>
+              {isPluginPlatform(s.modLoader) && (
+                <Tooltip label="Plugins">
+                  <ActionIcon variant="light" aria-label="Plugins" color={s.operation?.kind === 'install' ? 'blue' : 'gray'}
+                    disabled={s.status === 'provisioning'}
+                    onClick={() => setPluginsServerId(s.id)}>
+                    <IconPuzzle size={16} />
+                  </ActionIcon>
+                </Tooltip>
+              )}
               <Tooltip label="Delete">
                 <ActionIcon variant="light" color="red" aria-label="Delete server" onClick={() => confirmDelete(s)}>
                   <IconTrash size={16} />
@@ -353,6 +372,12 @@ function HostDetail({ host }: { host: RemoteHost }) {
         <RemoteBackupsModal
           host={host} server={backupsServer} zone={hostZoneLabel(info)}
           onClose={() => setBackupsServerId(null)} onRefresh={invalidate}
+        />
+      )}
+      {pluginsServer && (
+        <RemotePluginsModal
+          host={host} server={pluginsServer}
+          onClose={() => setPluginsServerId(null)} onRefresh={invalidate}
         />
       )}
       {scheduleServer && (

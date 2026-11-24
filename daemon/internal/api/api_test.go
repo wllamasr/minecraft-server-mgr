@@ -110,6 +110,46 @@ func TestMetricsRoute(t *testing.T) {
 	}
 }
 
+func TestAddonRoutes(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	if resp, _ := get(t, ts.URL+"/v1/servers/nope/addons", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("without a token: %d", resp.StatusCode)
+	}
+	send := func(method, path, body string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(method, ts.URL+path, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	// An unknown server is told apart from a daemon without these routes.
+	for _, c := range []struct{ method, path, body string }{
+		{http.MethodGet, "/v1/servers/nope/addons", ""},
+		{http.MethodPost, "/v1/servers/nope/addons", `{"versionId":"abc"}`},
+		{http.MethodPatch, "/v1/servers/nope/addons/x.jar", `{"enabled":false}`},
+		{http.MethodDelete, "/v1/servers/nope/addons/x.jar", ""},
+	} {
+		if status, body := send(c.method, c.path, c.body); status != http.StatusNotFound || !strings.Contains(body, `"error":"server not found"`) {
+			t.Errorf("%s %s: %d %s", c.method, c.path, status, body)
+		}
+	}
+	for _, body := range []string{``, `{}`, `{"enabled":"no"}`, `not json`} {
+		if status, _ := send(http.MethodPatch, "/v1/servers/nope/addons/x.jar", body); status != http.StatusBadRequest {
+			t.Errorf("PATCH with body %q: %d", body, status)
+		}
+	}
+	if status, _ := send(http.MethodPost, "/v1/servers/nope/addons", `not json`); status != http.StatusBadRequest {
+		t.Errorf("POST with a bad body: %d", status)
+	}
+}
+
 func TestInfoReportsAgentVersion(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()

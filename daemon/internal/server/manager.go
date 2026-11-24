@@ -74,10 +74,11 @@ type View struct {
 	store.Server
 	Status Status `json:"status"`
 	PID    int    `json:"pid,omitempty"`
-	// Operation is the backup or restore in flight, if any.
+	// Operation is the backup, the restore or the installation of a plugin in
+	// flight, if any.
 	Operation *OperationState `json:"operation,omitempty"`
-	// LastOperation is how the last backup or restore ended, if one ran since
-	// the daemon started.
+	// LastOperation is how the last of those ended, if one ran since the
+	// daemon started.
 	LastOperation *OperationResult `json:"lastOperation,omitempty"`
 }
 
@@ -348,7 +349,7 @@ func (m *Manager) Start(id string) error {
 			return errors.New("server is being deleted")
 		}
 		op := m.ops[id]
-		if op == nil {
+		if op == nil || op.state.Kind == kindInstall {
 			break
 		}
 		if op.committed || op.ctx.Err() == nil {
@@ -427,10 +428,11 @@ func (m *Manager) launch(id string, s store.Server, cmd *exec.Cmd) error {
 
 	rs := &runningServer{cmd: cmd, stdin: stdin, status: StatusRunning, exited: make(chan struct{}), metrics: newMetricsState(s)}
 	m.mu.Lock()
-	if m.shuttingDown || m.deleting[id] || m.running[id] != nil || m.ops[id] != nil {
+	busyOp := m.ops[id] != nil && m.ops[id].state.Kind != kindInstall
+	if m.shuttingDown || m.deleting[id] || m.running[id] != nil || busyOp {
 		// Lost a race with a shutdown, a delete, another start of this server,
 		// or a backup or restore of it.
-		shuttingDown, deleting, busy := m.shuttingDown, m.deleting[id], m.ops[id] != nil
+		shuttingDown, deleting, busy := m.shuttingDown, m.deleting[id], busyOp
 		m.mu.Unlock()
 		killTree(cmd)
 		_ = cmd.Wait()
@@ -514,7 +516,7 @@ func (m *Manager) beginStop(id string) (rs *runningServer, first bool, err error
 	// A backup of a server that is going down would catch it writing its
 	// world; the stop wins and the backup is dropped.
 	resumeSaving := false
-	if op := m.cancelOpLocked(id, "the server is stopping"); op != nil {
+	if op := m.cancelBackupLocked(id, "the server is stopping"); op != nil {
 		resumeSaving = op.savePaused
 	}
 	m.mu.Unlock()
@@ -989,7 +991,7 @@ func (m *Manager) waitExit(id string, rs *runningServer, s store.Server) {
 	}
 	// A backup that was reading the files of this process cannot vouch for
 	// them any more: the server writes its world on the way out.
-	m.cancelOpLocked(id, "the server stopped")
+	m.cancelBackupLocked(id, "the server stopped")
 	m.mu.Unlock()
 	// Tell Stop last, after the final status went out: once Stop returns, the
 	// server can be started again and its events must not trail behind.

@@ -8,6 +8,22 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Plugins of servers on remote hosts**: Paper, Purpur and Folia servers on the Remote Hosts
+  page have a **Plugins** button. Its window lists what is in the server's `plugins/` folder
+  (also jars copied there by hand, as long as their names are plain: letters, digits, spaces
+  and `. _ + - ( ) [ ]`), turns a plugin off or on, removes one, and installs one from
+  Modrinth.
+  - The search runs in the app, for the server's Minecraft version and platform. The host
+    downloads the plugin from Modrinth itself: the app only tells it which version. The host
+    keeps the file only if it has the size and the SHA-512 checksum Modrinth publishes for it.
+  - A plugin can be installed while the server runs and is loaded the next time it starts.
+    Removing a plugin or turning one off or on needs the server to be stopped.
+  - Removing a plugin deletes its jar; the folder with its settings and data stays on the host.
+  - One file per plugin: a second version of a plugin the host installed is refused (remove the
+    first). A plugin copied to the host by hand is not recognised as the same plugin. There is no "update" yet, and plugins that a plugin needs are not installed with it.
+  - The host needs `msmd` 0.5.0 or newer.
+- `msmd` 0.5.0: `GET`/`POST /v1/servers/{id}/addons`, `PATCH`/`DELETE
+  /v1/servers/{id}/addons/{file}`; the server's `operation` may now be of kind `install`.
 - **Tick time** for local servers, next to CPU, memory and players on the server page: how long
   the server needs for one tick against the time it has (50 ms at 20 ticks per second), with the
   ticks per second it can keep up and the 95th percentile.

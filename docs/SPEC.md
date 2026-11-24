@@ -12,7 +12,7 @@ mods, configuration, runtime lifecycle, and live diagnostics.
 Managing servers on **remote hosts** through the `msmd` daemon is an additive, early-stage
 capability specified separately in [DAEMON.md](DAEMON.md); this document covers local servers.
 Remote hosts support Paper, Purpur, Folia and the JVM profile too (the host needs an up-to-date
-`msmd`); plugin management through the app is local-only. Backups on remote hosts are covered
+`msmd`); plugins of servers on remote hosts are covered by FR-22e. Backups on remote hosts are covered
 by FR-13h, and their schedule and retention by FR-13i.
 
 Out of scope: Bedrock edition, proxy networks (BungeeCord/Velocity), and multi-user access
@@ -204,6 +204,24 @@ control.
   come from Modrinth only; CurseForge is disabled for these servers. For Paper and Purpur the
   search matches projects tagged paper, purpur, spigot, or bukkit; for Folia only projects
   tagged folia.
+- **FR-22e** For a Paper, Purpur or Folia server on a remote host, the user can list, install,
+  enable/disable and remove plugins.
+  - The list is the content of the server's `plugins/` folder on the host (regular `.jar` and
+    `.jar.disabled` files directly in it), not a record kept by the app. Files whose names
+    have characters other than ASCII letters, digits, spaces and `. _ + - ( ) [ ]` are not
+    listed and cannot be changed through the app.
+  - Installation: the app searches Modrinth and sends the daemon the id of a Modrinth version,
+    nothing else. The daemon resolves the version with Modrinth, requires it to be built for
+    the server's platform (FR-22d), requires the file to be a `.jar` on Modrinth's CDN with a
+    published SHA-512, and keeps the download only if size and checksum match. A file name that
+    is not a plain jar name is refused.
+  - A plugin may be installed while the server runs; it is loaded at the next start. Enabling,
+    disabling and removing require a stopped server.
+  - An installation uses the server's single operation slot (FR-13h): it excludes a backup or a
+    restore and is excluded by them. Starting or stopping the server neither waits for it nor
+    cancels it; deleting the server or shutting the daemon down cancels it.
+  - A second version of a project the daemon installed is refused. Dependencies are not
+    resolved. Removing a plugin leaves its data folder.
 
 ### 4.5b Modpacks
 

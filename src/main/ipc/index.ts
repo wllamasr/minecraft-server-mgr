@@ -165,6 +165,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('hosts:backup-delete', (_e, { hostId, serverId, backupId }) =>
     hostsManager.deleteRemoteBackup(hostId, serverId, backupId)
   )
+  ipcMain.handle('hosts:addons', (_e, { hostId, serverId }) => hostsManager.listRemoteAddons(hostId, serverId))
+  ipcMain.handle('hosts:addon-install', (_e, { hostId, serverId, versionId }) =>
+    hostsManager.installRemoteAddon(hostId, serverId, versionId)
+  )
+  ipcMain.handle('hosts:addon-toggle', (_e, { hostId, serverId, file, enabled }) =>
+    hostsManager.setRemoteAddonEnabled(hostId, serverId, file, enabled)
+  )
+  ipcMain.handle('hosts:addon-remove', (_e, { hostId, serverId, file }) =>
+    hostsManager.removeRemoteAddon(hostId, serverId, file)
+  )
 
   ipcMain.handle('mod-manager:search', async (_e, options) => {
     return await modManager.searchMods(options)

@@ -162,7 +162,7 @@ daemon/
   internal/api/               # HTTP handlers, WS hubs, auth middleware
   internal/server/            # server engine: lifecycle, provisioning
   internal/loader/            # mod-loader installers
-  internal/mods/              # Modrinth/CurseForge clients
+  internal/addons/            # plugins of a server: the plugins folder, installs from Modrinth
   internal/procstat/          # CPU and memory of a process tree (stdlib: /proc, Win32)
   internal/slp/               # players online, via the server list ping
   internal/tick/              # tick time, from the server's answer to "tick query"
@@ -229,7 +229,10 @@ operate and debug; it is a **v2** option, not needed for the MVP.
 | `GET` | `/v1/servers/{id}/logs` | Historical log buffer. |
 | `GET` (WS) | `/v1/servers/{id}/console` | Live console stream + stdin. |
 | `GET` (WS) | `/v1/events` | Host-wide event stream (status, telemetry, provisioning). |
-| `*` | `/v1/servers/{id}/mods...` | Mod search/install/uninstall/toggle. |
+| `GET` | `/v1/servers/{id}/addons` | Plugins of a Paper, Purpur or Folia server (msmd 0.5.0). |
+| `POST` | `/v1/servers/{id}/addons` | Install a Modrinth version as a plugin, by its id (`202`). |
+| `PATCH` | `/v1/servers/{id}/addons/{file}` | Turn a plugin of a stopped server off or on. |
+| `DELETE` | `/v1/servers/{id}/addons/{file}` | Remove a plugin of a stopped server. |
 
 The contract lives in `daemon/api/openapi.yaml`; the manager's `RemoteProvider` is
 generated from (or validated against) it so both sides cannot drift.
@@ -302,7 +305,7 @@ daemon cryptographically, replacing/augmenting the bearer token.
 | **A** | Manager: extract `ServerProvider`; wrap current services in `LocalProvider`; add `hosts` table with a seeded `local` host. | No user-visible change. |
 | **B** ✅ | Daemon MVP (Go): health, info, server CRUD + lifecycle, console stream (SSE), TLS + token auth, systemd install script. | **Done** — see [`../daemon/`](../daemon/); pair and run servers via curl. |
 | **C** 🟡 | Manager: daemon client (TLS fingerprint pinning) + "Add Remote Host" UI + secret storage (safeStorage) + a **Remote Hosts** page to pair a host and deploy/start/stop/delete servers and view their console. | **Partial** — shipped as an additive Remote Hosts section (`hosts` table, `remote-client`, `hosts-manager`, `/hosts` route). The full unified `ServerProvider` (Phase A, so local + remote appear together) and live SSE streaming to the manager are still to come. |
-| **D** 🟡 | Parity: mods, properties editor, telemetry, crash auto-restart over the wire. | **Partial** — crash auto-restart, backups and metrics (`GET /v1/servers/{id}/metrics`, polled) are done; mods and the properties editor are not. |
+| **D** 🟡 | Parity: mods, properties editor, telemetry, crash auto-restart over the wire. | **Partial** — crash auto-restart, backups, metrics (`GET /v1/servers/{id}/metrics`, polled) and plugins (`/v1/servers/{id}/addons`) are done; mods and the properties editor are not. The search for plugins stays in the manager. |
 | **E** | Hardening: mTLS, token rotation, daemon self-update, release CI for daemon binaries. | Production-ready. |
 
 ## 11. Open questions

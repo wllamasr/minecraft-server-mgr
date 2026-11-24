@@ -20,6 +20,7 @@ interface Props {
 }
 
 function describeOperation(op: RemoteOperation): string {
+  if (op.kind === 'install') return 'A plugin is being installed on this server…'
   if (op.phase === 'saving') return 'Waiting for the server to save the world…'
   if (op.phase === 'replacing') return 'Replacing the server files…'
   if (op.totalBytes <= 0) return op.kind === 'backup' ? 'Preparing the backup…' : 'Preparing the restore…'
@@ -50,7 +51,8 @@ export function RemoteBackupsModal({ host, server, zone, onClose, onRefresh }: P
   })
 
   const operation = server.operation ?? null
-  const last = server.lastOperation ?? null
+  // How the installation of a plugin ended is told where plugins are managed.
+  const last = server.lastOperation && server.lastOperation.kind !== 'install' ? server.lastOperation : null
   const working = operation !== null || awaiting !== null
 
   // The server list is polled every few seconds; follow an operation closer.

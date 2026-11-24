@@ -10,11 +10,11 @@ export const OLDER_DAEMON_MESSAGE =
  * Whether an error says that the daemon does not know the route at all.
  * Routes added after a host's msmd was installed answer 404 or 405 there. A
  * 404 the daemon wrote itself names what is missing ("server not found",
- * "backup not found") and is not that.
+ * "backup not found", "plugin not found") and is not that.
  */
 export function isOlderDaemonError(message: string): boolean {
   if (/^Daemon HTTP 405\b/.test(message)) return true
-  return /^Daemon HTTP 404\b/.test(message) && !/(server|backup) not found/.test(message)
+  return /^Daemon HTTP 404\b/.test(message) && !/(server|backup|plugin) not found/.test(message)
 }
 
 /**

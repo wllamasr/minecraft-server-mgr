@@ -140,6 +140,10 @@ calls use the server's `plugins/` folder, and only `modrinth` is accepted.
 | `createRemoteBackup(hostId, serverId)`               | `hosts:backup-create`      | `{ hostId, serverId }`           | `{ operationId }` (returns once msmd accepted it) |
 | `restoreRemoteBackup(hostId, serverId, backupId, backupFirst?)` | `hosts:backup-restore` | `{ hostId, serverId, backupId, backupFirst }` | `{ operationId }` (returns once msmd accepted it) |
 | `deleteRemoteBackup(hostId, serverId, backupId)`     | `hosts:backup-delete`      | `{ hostId, serverId, backupId }` | `void`                   |
+| `listRemoteAddons(hostId, serverId)`                 | `hosts:addons`             | `{ hostId, serverId }`           | `RemoteAddon[]`          |
+| `installRemoteAddon(hostId, serverId, versionId)`    | `hosts:addon-install`      | `{ hostId, serverId, versionId }` | `{ operationId }` (returns once msmd accepted it) |
+| `setRemoteAddonEnabled(hostId, serverId, file, enabled)` | `hosts:addon-toggle`   | `{ hostId, serverId, file, enabled }` | `void`              |
+| `removeRemoteAddon(hostId, serverId, file)`          | `hosts:addon-remove`       | `{ hostId, serverId, file }`     | `void`                   |
 
 `remoteSoftwareVersions` asks the host's `msmd` daemon (`GET /v1/software/{platform}/versions`) for
 the Minecraft release versions the platform has builds for, newest first; `platform` is
@@ -148,8 +152,21 @@ build numbers. `CreateRemoteServerInput` has an optional `jvmProfile` (`'default
 its `modLoader` may be `paper`, `purpur` or `folia` (with `modLoaderVersion` as the build number).
 A host running an older `msmd` has no `/v1/software` endpoint and rejects the new engines, so
 `hosts:software-versions` and such deployments fail until the daemon is updated; an older daemon
-silently ignores `jvmProfile`. Plugin installation and management are local-only; remote hosts have no
-mod or plugin browser.
+silently ignores `jvmProfile`.
+
+**Remote plugins** (Paper, Purpur and Folia servers; msmd 0.5.0+) live in the server's `plugins/`
+folder on the host. `listRemoteAddons` returns what is in it as `RemoteAddon[]`
+([`remote-addons.ts`](../src/shared/utils/remote-addons.ts): `{ file, enabled, sizeBytes, name?,
+version?, projectId?, versionId? }`); `file` is the jar's name and identifies the plugin in the
+other calls. `installRemoteAddon` sends only the id of a Modrinth version (find it with
+`searchMods` and `getModVersions`, source `modrinth`): the host downloads and checks the file
+itself. It resolves once the host accepted the request; follow `RemoteServer.operation` (`kind:
+'install'`, `phase: 'downloading'`) and read `RemoteServer.lastOperation` (`addon` is the file
+that was installed, `warning` is set when the server was running and has to be restarted to load
+it). `setRemoteAddonEnabled` and `removeRemoteAddon` are refused with `Stop the server before
+removing a plugin or turning one off or on` unless the server is stopped. `file` must look like
+a jar's name and `versionId` like a Modrinth id; anything else is rejected before a request is
+made. A host with an older msmd rejects all four with the "older msmd" message.
 
 **Remote backups** are made, kept and restored by `msmd` on the host; nothing is transferred to
 the app. `createRemoteBackup` and `restoreRemoteBackup` only start the operation and resolve with

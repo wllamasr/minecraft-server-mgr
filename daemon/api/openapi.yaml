@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: msmd — Minecraft Server Manager daemon
-  version: 0.4.0
+  version: 0.5.0
   description: >
     HTTP + Server-Sent-Events API for managing Minecraft servers on a remote
     host. All endpoints are served over TLS. Every route except /v1/health and
@@ -114,10 +114,11 @@ paths:
     get:
       summary: Get a server
       description: >-
-        Besides its settings and status, a server carries "operation" while a backup or a restore
-        of it is running ({id, kind: backup|restore, phase: saving|copying|replacing, doneBytes,
-        totalBytes}) and "lastOperation" once one has ended ({id, kind, ok, cancelled, error,
-        warning, backupId, scheduled, finishedAt}). lastOperation is kept in memory: it is gone
+        Besides its settings and status, a server carries "operation" while a backup, a restore
+        or the installation of a plugin is running ({id, kind: backup|restore|install, phase:
+        saving|copying|replacing|downloading, doneBytes, totalBytes}) and "lastOperation" once one
+        has ended ({id, kind, ok, cancelled, error, warning, backupId, addon, scheduled,
+        finishedAt}; "addon" is the file of the plugin an installation added). lastOperation is kept in memory: it is gone
         after the daemon restarts. Both are omitted when there is nothing to report. A server
         with scheduled backups also carries "backupSchedule", "backupKeep" (omitted while it was
         never set, which means the default, 7) and, once one was due, "backupLastRun" ({at, outcome:
@@ -150,7 +151,8 @@ paths:
                     Daily backup time "HH:MM" (24-hour) on the host's clock. null or "" turns it
                     off. The server is backed up running or stopped; a stopped one only if its
                     files changed since its last scheduled backup. A server that is busy at that
-                    time (starting, stopping, another backup or a restore) is tried again for 10
+                    time (starting, stopping, another backup, a restore or the installation of
+                    a plugin) is tried again for 10
                     minutes, then the backup is recorded as missed. A scheduled restart that
                     comes due during a backup waits up to 15 minutes for it.
                   example: "03:30"
@@ -169,8 +171,8 @@ paths:
     delete:
       summary: Delete a server
       description: >-
-        Removes the server, its files and its backups. A backup or restore in progress is
-        cancelled first (a restore that is already replacing files is finished). A server that is not running is gone when the call
+        Removes the server, its files and its backups. A backup, a restore or the installation
+        of a plugin in progress is cancelled first (a restore that is already replacing files is finished). A server that is not running is gone when the call
         returns (204). A running one is told to stop first (202): it is in status "stopping"
         and disappears once its process has exited, shortly after the stop grace period at the latest. Watch for
         GET to answer 404. If it cannot be stopped it is kept, and its log says so. (Older
@@ -229,7 +231,8 @@ paths:
         "404": { description: Unknown server }
         "409":
           description: >-
-            Not now: another backup or a restore is running, or the server is starting, stopping,
+            Not now: another backup, a restore or the installation of a plugin is running, or
+            the server is starting, stopping,
             restarting, about to restart after a crash, being provisioned or deleted, or the
             daemon is shutting down. (This call makes a "manual" backup; "scheduled" ones are
             made by the daemon when the server has a backupSchedule, see PATCH.)
@@ -271,6 +274,80 @@ paths:
         "400": { description: Malformed backup id or body }
         "404": { description: Unknown server ("server not found") or backup ("backup not found") }
         "409": { description: The server is running, or another operation is in progress (see POST backups) }
+  /v1/servers/{id}/addons:
+    get:
+      summary: List the plugins of a server
+      description: >-
+        The regular .jar and .jar.disabled files directly in the plugins folder of a Paper,
+        Purpur or Folia server, by name. The folder is the list: a jar put there by hand is in
+        it, provided its name matches ^[A-Za-z0-9][A-Za-z0-9._+()\[\] -]{0,120}\.jar$ (other
+        files are left out). Since 0.5.0.
+      responses:
+        "200":
+          description: >-
+            JSON array of {file, enabled, sizeBytes, modifiedAt, name, version, projectId,
+            versionId}. "file" is the jar's name without the suffix of a disabled one and names
+            the plugin in the other calls. "name" and "version" are what the jar declares in its
+            paper-plugin.yml or plugin.yml, "projectId" and "versionId" the Modrinth origin of a
+            file the daemon installed; all four are omitted when unknown.
+        "404": { description: Unknown server ("server not found") }
+        "409": { description: The server's platform has no plugins the daemon manages }
+    post:
+      summary: Install a plugin from Modrinth
+      description: >-
+        Returns at once with the id of an operation of kind "install"; follow it in the server's
+        "operation" and read the outcome in its "lastOperation" (same id). The body names a
+        Modrinth version by its id. The daemon asks Modrinth for that version and installs its
+        primary file only if the version is built for the server's platform (paper, purpur,
+        spigot or bukkit for Paper and Purpur; folia for Folia), the file is a plain .jar name
+        on https://cdn.modrinth.com, and the download has the size and the SHA-512 Modrinth
+        gave. The server may be running: the plugin is loaded the next time it starts, and
+        "lastOperation.warning" says so. A file of that name, or another version of the same
+        Modrinth project installed by the daemon, makes the operation fail. Deleting the server
+        or shutting the daemon down cancels it; starting or stopping the server does not.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionId]
+              properties:
+                versionId: { type: string, pattern: "^[A-Za-z0-9]{1,32}$" }
+      responses:
+        "202": { description: 'Accepted: {"ok": true, "operationId": "..."}' }
+        "400": { description: Malformed body or version id }
+        "404": { description: Unknown server }
+        "409": { description: "Not now (another operation is running, the server is being provisioned or deleted), or the platform has no plugins" }
+  /v1/servers/{id}/addons/{file}:
+    patch:
+      summary: Turn a plugin off or on
+      description: >-
+        A plugin that is off is kept as <file>.disabled, which the server does not load. The
+        server must be stopped.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "204": { description: Done (also when it already was in that state) }
+        "400": { description: Malformed body }
+        "404": { description: Unknown server ("server not found") or plugin ("plugin not found") }
+        "409": { description: The server is not stopped, or an operation is in progress }
+    delete:
+      summary: Remove a plugin
+      description: >-
+        Deletes the plugin's jar. The folder the plugin keeps its settings and data in stays.
+        The server must be stopped.
+      responses:
+        "204": { description: Removed }
+        "404": { description: Unknown server ("server not found") or plugin ("plugin not found") }
+        "409": { description: The server is not stopped, or an operation is in progress }
   /v1/servers/{id}/command:
     post:
       summary: Send a console command

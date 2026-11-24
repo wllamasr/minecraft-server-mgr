@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
 
@@ -469,5 +469,143 @@ test('deploys a Paper server to a remote host', async () => {
     await page
       .evaluate(({ hostId, serverId }) => (window as unknown as ApiWindow).api.deleteRemoteServer(hostId, serverId), created)
       .catch(() => undefined)
+  }
+})
+
+/**
+ * Plugins of a server on a remote host: installed by the host from Modrinth,
+ * loaded by the server, turned off and removed. Needs a running msmd, like
+ * the test above; run it on its own (`-g "plugins of a server"`).
+ */
+test('manages the plugins of a server on a remote host', async () => {
+  const baseUrl = process.env.MSM_E2E_LIVE_MSMD_URL
+  const token = process.env.MSM_E2E_LIVE_MSMD_TOKEN
+  test.skip(!baseUrl || !token, 'Set MSM_E2E_LIVE_MSMD_URL and MSM_E2E_LIVE_MSMD_TOKEN to test a remote host')
+  test.setTimeout(25 * 60_000)
+
+  const created = await page.evaluate(
+    async ({ baseUrl, token, mc, port }) => {
+      const api = (window as unknown as ApiWindow).api
+      const host = await api.addHost({ name: 'Plugin host', baseUrl, token })
+      const builds: { version: string; stable: boolean }[] = await api.remoteLoaderVersions(host.id, 'paper', mc)
+      const build = (builds.find((b) => b.stable) ?? builds[0]).version
+      const server = await api.createRemoteServer(host.id, {
+        name: 'live-remote-plugins', minecraftVersion: mc, modLoader: 'paper', modLoaderVersion: build,
+        port, minRam: '1G', maxRam: '2G'
+      })
+      return { hostId: host.id as string, serverId: server.id as string, dir: server.dir as string }
+    },
+    { baseUrl: baseUrl as string, token: token as string, mc: MC_VERSION, port: PORT + 3 }
+  )
+  // A call of the preload API; a refusal comes back as "ERROR <message>".
+  const api = <T>(method: string, ...args: unknown[]): Promise<T> =>
+    page.evaluate(
+      ({ method, args }) => (window as unknown as ApiWindow).api[method](...args).then((v) => v, (e: Error) => `ERROR ${e.message}`),
+      { method, args }
+    ) as Promise<T>
+  const remote = async (): Promise<{ status: string; log: string }> => {
+    const servers = await api<{ id: string; status: string }[]>('listRemoteServers', created.hostId)
+    const lines = await api<{ line: string }[]>('remoteServerLogs', created.hostId, created.serverId)
+    return { status: servers.find((s) => s.id === created.serverId)?.status ?? 'missing', log: lines.map((l) => l.line).join(' | ') }
+  }
+  const count = (log: string, what: RegExp): number => (log.match(what) ?? []).length
+  const pluginsDir = join(created.dir, 'plugins')
+  const jars = (): string[] =>
+    existsSync(pluginsDir) ? readdirSync(pluginsDir).filter((f) => /\.jar(\.disabled)?$/.test(f)).sort() : []
+
+  const openPlugins = async (): Promise<void> => {
+    await page.getByText('Remote Hosts', { exact: true }).first().click()
+    await page.getByText('Plugin host', { exact: true }).first().click()
+    await page.getByRole('button', { name: 'Plugins' }).click()
+    await expect(page.getByTestId('remote-plugins')).toBeVisible()
+  }
+  const pluginsWindow = page.getByTestId('remote-plugins')
+  const rows = page.getByTestId('remote-plugin-row')
+  const hitFor = (name: string) =>
+    page.getByTestId('remote-plugin-hit').filter({ has: page.getByText(name, { exact: true }) }).first()
+  const install = async (query: string, name: string): Promise<void> => {
+    await pluginsWindow.getByLabel('Search plugins on Modrinth').fill(query)
+    await pluginsWindow.getByRole('button', { name: 'Search' }).click()
+    await expect(hitFor(name)).toBeVisible({ timeout: 30_000 })
+    await hitFor(name).getByRole('button', { name: 'Install' }).click()
+  }
+
+  try {
+    await expect.poll(async () => (await remote()).status, { timeout: 5 * 60_000, intervals: [1000] }).toBe('stopped')
+
+    // A stopped server without plugins: the host installs one from Modrinth.
+    await openPlugins()
+    await expect(page.getByTestId('remote-plugins-empty')).toBeVisible()
+    await install('luckperms', 'LuckPerms')
+    await expect(page.getByText('LuckPerms installed. It loads when the server starts.')).toBeVisible({ timeout: 2 * 60_000 })
+    await expect(rows).toHaveCount(1)
+    await expect(rows.first()).toContainText('LuckPerms')
+    await expect(rows.first()).toContainText('Modrinth')
+    expect(jars()).toHaveLength(1)
+    expect(jars()[0]).toMatch(/^LuckPerms.*\.jar$/)
+    expect((await remote()).log).toMatch(/Plugin LuckPerms[^|]*\.jar installed \(checksum OK\)\./)
+    // The same plugin is not offered a second time.
+    await expect(hitFor('LuckPerms').getByRole('button')).toHaveText('Installed')
+    await page.keyboard.press('Escape')
+
+    // The server loads it.
+    await api('startRemoteServer', created.hostId, created.serverId)
+    await expect.poll(async () => (await remote()).log, { timeout: 6 * 60_000, intervals: [2000] }).toMatch(/Done \(\d/)
+    expect((await remote()).log).toMatch(/\[LuckPerms\] Enabling LuckPerms/)
+
+    // While it runs: nothing is taken from under it, but a plugin can be added.
+    const luckperms = jars()[0]
+    expect(await api<string>('removeRemoteAddon', created.hostId, created.serverId, luckperms)).toMatch(
+      /Stop the server before removing a plugin/
+    )
+    expect(await api<string>('setRemoteAddonEnabled', created.hostId, created.serverId, luckperms, false)).toMatch(/Stop the server/)
+    expect(jars()).toEqual([luckperms])
+    await openPlugins()
+    await expect(rows.first().getByRole('switch')).toBeDisabled()
+    await install('chunky', 'Chunky')
+    await expect(page.getByText('Chunky installed', { exact: true })).toBeVisible({ timeout: 2 * 60_000 })
+    await expect(page.getByText(/restart the server to use it/)).toBeVisible()
+    await expect(rows).toHaveCount(2)
+    expect(count((await remote()).log, /Enabling Chunky/g)).toBe(0)
+    await page.keyboard.press('Escape')
+
+    // Stopped: one is turned off. The next start loads only the other.
+    await api('stopRemoteServer', created.hostId, created.serverId)
+    await expect.poll(async () => (await remote()).status, { timeout: 90_000, intervals: [1000] }).toBe('stopped')
+    await openPlugins()
+    const luckpermsRow = rows.filter({ hasText: 'LuckPerms' })
+    await expect(luckpermsRow.getByRole('switch')).toBeEnabled({ timeout: 30_000 })
+    await luckpermsRow.getByRole('switch').click({ force: true })
+    await expect.poll(() => jars().includes(`${luckperms}.disabled`), { timeout: 30_000 }).toBe(true)
+    await expect(luckpermsRow.getByRole('switch')).not.toBeChecked()
+    await page.keyboard.press('Escape')
+
+    await api('startRemoteServer', created.hostId, created.serverId)
+    await expect
+      .poll(async () => count((await remote()).log, /Done \(\d/g), { timeout: 6 * 60_000, intervals: [2000] })
+      .toBe(2)
+    const afterSecondStart = (await remote()).log
+    expect(count(afterSecondStart, /\[LuckPerms\] Enabling LuckPerms/g)).toBe(1)
+    expect(count(afterSecondStart, /Enabling Chunky/g)).toBe(1)
+    await api('stopRemoteServer', created.hostId, created.serverId)
+    await expect.poll(async () => (await remote()).status, { timeout: 90_000, intervals: [1000] }).toBe('stopped')
+
+    // Removed: the jar goes, what the plugin wrote stays.
+    await openPlugins()
+    await expect(luckpermsRow.getByRole('button', { name: /^Remove / })).toBeEnabled({ timeout: 30_000 })
+    await luckpermsRow.getByRole('button', { name: /^Remove / }).click()
+    await page.getByRole('button', { name: 'Remove', exact: true }).click()
+    await expect(rows).toHaveCount(1, { timeout: 30_000 })
+    await expect(rows.first()).toContainText('Chunky')
+    expect(jars().some((f) => f.startsWith('LuckPerms'))).toBe(false)
+    expect(existsSync(join(pluginsDir, 'LuckPerms'))).toBe(true)
+    expect(await api<string>('removeRemoteAddon', created.hostId, created.serverId, luckperms)).toMatch(/plugin not found/)
+    await page.keyboard.press('Escape')
+  } finally {
+    if ((await remote()).status === 'running') {
+      await api('stopRemoteServer', created.hostId, created.serverId)
+      await page.waitForTimeout(20_000)
+    }
+    await api('deleteRemoteServer', created.hostId, created.serverId)
   }
 })

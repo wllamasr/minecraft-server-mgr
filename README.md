@@ -21,7 +21,7 @@ from a single window. No batch scripts, no manual EULA edits.
 - **Plugin platforms** — run **Paper**, **Purpur**, or **Folia** (aimed at large player
   counts), locally or on remote hosts (`msmd`). Builds are chosen in the wizard and verified
   against the project's published checksum. An optional "Optimized JVM flags" profile applies
-  Aikar's G1GC flags. Plugin management in the app is local-only.
+  Aikar's G1GC flags. Plugins are managed in the app for local servers and for servers on remote hosts.
 - **Mod, plugin & modpack management** — search and install mods from **Modrinth** and
   **CurseForge** (plugins from Modrinth only), toggle them on/off, and remove them.
 - **Live console** — real-time log streaming with command input, straight to the server's stdin.

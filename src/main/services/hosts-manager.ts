@@ -9,6 +9,7 @@ import {
   plainSettingsMessage
 } from '../../shared/utils/daemon-errors'
 import { readRemoteMetrics, type RemoteServerMetrics } from '../../shared/utils/server-metrics'
+import { isAddonFile, isModrinthVersionId, readRemoteAddons, type RemoteAddon } from '../../shared/utils/remote-addons'
 import { safeStorage } from 'electron'
 import { v4 as uuid } from 'uuid'
 import { eq } from 'drizzle-orm'
@@ -288,4 +289,48 @@ export async function restoreRemoteBackup(
 
 export async function deleteRemoteBackup(hostId: string, serverId: string, backupId: string): Promise<void> {
   await remoteRequest(connFor(hostId), 'DELETE', backupPath(serverId, backupId)).catch(plainDaemonError)
+}
+
+// ─── plugins (installed, kept and changed on the host) ─────
+
+function addonsPath(serverId: string): string {
+  if (typeof serverId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(serverId)) throw new Error('Invalid server')
+  return `/v1/servers/${serverId}/addons`
+}
+
+function addonPath(serverId: string, file: unknown): string {
+  // Names end up in the request path: only what a plugin's jar is called is sent.
+  if (!isAddonFile(file)) throw new Error('Invalid plugin')
+  return `${addonsPath(serverId)}/${encodeURIComponent(file)}`
+}
+
+/** The plugins of a remote server (Paper, Purpur or Folia), by name. */
+export async function listRemoteAddons(hostId: string, serverId: string): Promise<RemoteAddon[]> {
+  const raw = await remoteRequest<unknown>(connFor(hostId), 'GET', addonsPath(serverId)).catch(plainDaemonError)
+  return readRemoteAddons(raw)
+}
+
+/**
+ * Have the host install a version of a Modrinth project as a plugin. The host
+ * downloads it from Modrinth itself and checks it; only the version's id is
+ * sent. It answers at once; the server's `lastOperation`, with the returned
+ * id, tells how it ended.
+ */
+export async function installRemoteAddon(hostId: string, serverId: string, versionId: string): Promise<{ operationId: string }> {
+  if (!isModrinthVersionId(versionId)) throw new Error('Invalid version')
+  const res = await remoteRequest<{ operationId: string }>(connFor(hostId), 'POST', addonsPath(serverId), { versionId }).catch(
+    plainDaemonError
+  )
+  return { operationId: res.operationId }
+}
+
+/** Turn a plugin of a stopped remote server off or on. */
+export async function setRemoteAddonEnabled(hostId: string, serverId: string, file: string, enabled: boolean): Promise<void> {
+  if (typeof enabled !== 'boolean') throw new Error('Invalid state')
+  await remoteRequest(connFor(hostId), 'PATCH', addonPath(serverId, file), { enabled }).catch(plainDaemonError)
+}
+
+/** Delete the jar of a plugin of a stopped remote server. */
+export async function removeRemoteAddon(hostId: string, serverId: string, file: string): Promise<void> {
+  await remoteRequest(connFor(hostId), 'DELETE', addonPath(serverId, file)).catch(plainDaemonError)
 }

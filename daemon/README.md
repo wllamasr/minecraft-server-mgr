@@ -40,6 +40,19 @@ on the host:
   server is sent `tick query` at most every 15 seconds and only when its metrics are requested
   (each question leaves four lines in the server's `logs/latest.log`; the answers to msmd's own
   questions are kept out of `/logs` and `/console`). `409` when the server is not running.
+- **Plugins.** For Paper, Purpur and Folia servers, `GET /v1/servers/{id}/addons` lists the
+  jars in the server's `plugins/` folder (the folder is the list: a jar copied in by hand is
+  there too, if its name is of letters, digits, spaces and `._+-()[]` only), with the name and version each declares and, for the ones msmd installed, the
+  Modrinth project and version. `POST .../addons` with `{"versionId": "..."}` installs a version
+  of a Modrinth project: msmd asks Modrinth what that version is, refuses it unless it is built
+  for the server's platform and its file is a `.jar` kept on `cdn.modrinth.com`, downloads it to
+  a `.part` file and keeps it only with the size and SHA-512 checksum Modrinth gave. No address
+  or file name is taken from the caller. The call returns at once (an `operation` of kind
+  `install`); the server may be running, and loads the plugin the next time it starts. `PATCH
+  .../addons/{file}` with `{"enabled": false}` renames the jar to `<file>.disabled` and `DELETE
+  .../addons/{file}` removes it; both need a stopped server (`409` otherwise) and leave the
+  plugin's own folder alone. A second version of an installed project is refused; dependencies
+  are not resolved. Mods of Fabric, Forge, NeoForge and Quilt servers are not managed (`409`).
 - **Scheduled backups.** `PATCH /v1/servers/{id}` with `backupSchedule` (`HH:MM` on the host's
   clock) backs the server up every day, running or stopped, and `backupKeep` (1 to 365, default
   7) says how many of these to keep: after each one the older *scheduled* backups are deleted,
@@ -68,7 +81,7 @@ on the host:
 - **Security.** TLS with a self-signed cert (pinned by the manager, TOFU) and
   **bearer-token** auth. Get/rotate the token with `msmd auth`.
 
-**Not yet** (see the RFC): CurseForge modpacks, mutual TLS, mod and plugin management. The
+**Not yet** (see the RFC): CurseForge modpacks, mutual TLS, mod management, plugin updates. The
 desktop manager's remote-host UI is landing separately (Phase A/C).
 
 ## Build & run

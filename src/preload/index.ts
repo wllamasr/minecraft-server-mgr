@@ -170,6 +170,17 @@ const api = {
     ipcRenderer.invoke('hosts:backup-restore', { hostId, serverId, backupId, backupFirst }),
   deleteRemoteBackup: (hostId: string, serverId: string, backupId: string): Promise<void> =>
     ipcRenderer.invoke('hosts:backup-delete', { hostId, serverId, backupId }),
+  /** The plugins of a remote Paper, Purpur or Folia server (msmd 0.5.0+). */
+  listRemoteAddons: (hostId: string, serverId: string): Promise<import('../shared/utils/remote-addons').RemoteAddon[]> =>
+    ipcRenderer.invoke('hosts:addons', { hostId, serverId }),
+  /** Has the host install a Modrinth version; the server's `lastOperation` with this id tells how it ended. */
+  installRemoteAddon: (hostId: string, serverId: string, versionId: string): Promise<{ operationId: string }> =>
+    ipcRenderer.invoke('hosts:addon-install', { hostId, serverId, versionId }),
+  /** Turns a plugin of a stopped remote server off or on. */
+  setRemoteAddonEnabled: (hostId: string, serverId: string, file: string, enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('hosts:addon-toggle', { hostId, serverId, file, enabled }),
+  removeRemoteAddon: (hostId: string, serverId: string, file: string): Promise<void> =>
+    ipcRenderer.invoke('hosts:addon-remove', { hostId, serverId, file }),
 
   // ─── App / Window ─────────────────────────────────────
   getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_VERSION),

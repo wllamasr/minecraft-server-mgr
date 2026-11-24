@@ -42,26 +42,26 @@ export interface RemoteServer {
   backupKeep?: number
   /** How the last scheduled backup went. Kept by the host across its restarts. */
   backupLastRun?: { at: string; outcome: string; message?: string }
-  /** The backup or restore in flight, if any. Absent on daemons without backups. */
+  /** The backup, restore or plugin installation in flight, if any. Absent on daemons without backups. */
   operation?: RemoteOperation
-  /** How the last backup or restore ended, if one ran since the daemon started. */
+  /** How the last of those ended, if one ran since the daemon started. */
   lastOperation?: RemoteOperationResult
 }
 
-/** A backup or a restore running on a remote host. */
+/** A backup, a restore or the installation of a plugin (msmd 0.5.0+) running on a remote host. */
 export interface RemoteOperation {
   id: string
-  kind: 'backup' | 'restore'
+  kind: 'backup' | 'restore' | 'install'
   /** `saving`: waiting for the running server to write the world to disk. */
-  phase: 'saving' | 'copying' | 'replacing'
+  phase: 'saving' | 'copying' | 'replacing' | 'downloading'
   doneBytes: number
   totalBytes: number
 }
 
-/** How a backup or a restore on a remote host ended. */
+/** How a backup, a restore or the installation of a plugin on a remote host ended. */
 export interface RemoteOperationResult {
   id: string
-  kind: 'backup' | 'restore'
+  kind: 'backup' | 'restore' | 'install'
   ok: boolean
   /** It was dropped because the server was stopped, restarted or deleted, or the daemon shut down. */
   cancelled?: boolean
@@ -70,6 +70,8 @@ export interface RemoteOperationResult {
   warning?: string
   /** The backup that was made or restored. */
   backupId?: string
+  /** The file of the plugin that was installed. */
+  addon?: string
   /** The host's schedule started it; how it went is also in `backupLastRun`. */
   scheduled?: boolean
   finishedAt: string

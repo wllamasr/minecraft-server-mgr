@@ -41,12 +41,19 @@ func IsConflict(err error) bool {
 	return errors.As(err, &c)
 }
 
-// OperationState is a backup or a restore in flight.
+// kindInstall is the kind of the operation that installs a plugin. Unlike a
+// backup or a restore it has nothing to do with whether the server runs: a
+// start or a stop neither waits for it nor ends it.
+const kindInstall = "install"
+
+// OperationState is a backup, a restore or the installation of a plugin in
+// flight.
 type OperationState struct {
 	ID   string `json:"id"`
-	Kind string `json:"kind"` // "backup" or "restore"
+	Kind string `json:"kind"` // "backup", "restore" or "install"
 	// Phase is "saving" (waiting for the running server to write the world to
-	// disk), "copying" or "replacing" (a restore putting the files in place).
+	// disk), "copying", "replacing" (a restore putting the files in place) or
+	// "downloading" (a plugin coming from Modrinth).
 	Phase      string `json:"phase"`
 	DoneBytes  int64  `json:"doneBytes"`
 	TotalBytes int64  `json:"totalBytes"`
@@ -64,6 +71,8 @@ type OperationResult struct {
 	Warning string `json:"warning,omitempty"`
 	// BackupID is the backup that was made or restored.
 	BackupID string `json:"backupId,omitempty"`
+	// Addon is the file of the plugin that was installed.
+	Addon string `json:"addon,omitempty"`
 	// Scheduled is set for a backup the schedule started; how those went is
 	// also kept, across daemon restarts, in the server's backupLastRun.
 	Scheduled  bool   `json:"scheduled,omitempty"`
@@ -237,12 +246,19 @@ func (m *Manager) beginOperation(id, kind string) (*operation, store.Server, *ru
 		return refuse("the daemon is shutting down")
 	case m.deleting[id]:
 		return refuse("server is being deleted")
+	case m.ops[id] != nil && m.ops[id].state.Kind == kindInstall:
+		return refuse("A plugin is being installed on this server; try again once that is done")
 	case m.ops[id] != nil:
 		return refuse("A backup or a restore of this server is already in progress")
 	case m.provisioning[id] == StatusProvisioning:
 		return refuse("server is still being provisioned")
+	case m.provisioning[id] != "" && kind == kindInstall:
+		return refuse("The server was not set up completely")
 	case m.provisioning[id] != "":
 		return refuse("The server was not set up completely; there is nothing to back up or restore")
+	case kind == kindInstall:
+		// A plugin is a new file in a folder: it can be added whatever the
+		// server is doing, and is loaded the next time the server starts.
 	case m.starting[id] > 0:
 		return refuse("The server is starting; try again once it is up")
 	case m.restarting[id]:
@@ -256,8 +272,12 @@ func (m *Manager) beginOperation(id, kind string) (*operation, store.Server, *ru
 	}
 
 	ctx, cancel := context.WithCancelCause(context.Background())
+	phase := "copying"
+	if kind == kindInstall {
+		phase = "downloading"
+	}
 	op := &operation{
-		state:  OperationState{ID: newID()[:12], Kind: kind, Phase: "copying"},
+		state:  OperationState{ID: newID()[:12], Kind: kind, Phase: phase},
 		ctx:    ctx,
 		cancel: cancel,
 		done:   make(chan struct{}),
@@ -268,7 +288,8 @@ func (m *Manager) beginOperation(id, kind string) (*operation, store.Server, *ru
 }
 
 // runOperation runs a registered operation to its end and records the result.
-func (m *Manager) runOperation(op *operation, s store.Server, run func() (backupID, warning string, err error)) {
+// subject is what it made or worked on: a backup's id, a plugin's file.
+func (m *Manager) runOperation(op *operation, s store.Server, run func() (subject, warning string, err error)) {
 	backupID, warning, err := run()
 
 	result := OperationResult{
@@ -279,7 +300,9 @@ func (m *Manager) runOperation(op *operation, s store.Server, run func() (backup
 		Scheduled:  op.scheduled,
 		FinishedAt: time.Now().UTC().Format(time.RFC3339),
 	}
-	if err == nil {
+	if err == nil && op.state.Kind == kindInstall {
+		result.Addon = backupID
+	} else if err == nil {
 		result.BackupID = backupID
 	} else {
 		result.Error = err.Error()
@@ -322,6 +345,15 @@ func (m *Manager) cancelOpLocked(id, reason string) *operation {
 		op.cancel(errors.New(reason))
 	}
 	return op
+}
+
+// cancelBackupLocked is cancelOpLocked for what a server going down takes
+// with it: a backup. The installation of a plugin goes on. m.mu must be held.
+func (m *Manager) cancelBackupLocked(id, reason string) *operation {
+	if op := m.ops[id]; op == nil || op.state.Kind == kindInstall {
+		return nil
+	}
+	return m.cancelOpLocked(id, reason)
 }
 
 var errNothingToBackUp = errors.New("The server has no files to back up")

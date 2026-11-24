@@ -204,8 +204,8 @@ Paper, Purpur, and Folia are also available on remote hosts (the `msmd` daemon).
 dialog on the Remote Hosts page, pick the **Engine**; the Minecraft versions are loaded from the
 host, the newest stable build is preselected, and the **Optimized JVM flags** switch is on by
 default. The host must run an up-to-date `msmd`: with an older one the app shows an error when it
-loads the engine's version list. Installing plugins through the app works for local servers only;
-remote hosts have no mod or plugin browser.
+loads the engine's version list. Plugins of a server on a remote host are managed from its
+**Plugins** button (see section 8).
 
 Each server on a remote host has a **Restart** button while it runs and a clock button for its
 **scheduled restart**. A remote schedule works like a local one, with two differences: the time
@@ -243,7 +243,8 @@ under the settings tells how the last one went. What is different on a host:
   often UTC).
 - The host makes the backup itself, so it happens **even when this app is closed** or this
   computer is off. It is only missed if the host is down or suspended at that time, or if the
-  server stays busy (starting, stopping, another backup or a restore) for 10 minutes; a missed
+  server stays busy (starting, stopping, another backup, a restore or the installation of a
+  plugin) for 10 minutes; a missed
   backup is not caught up.
 - If the server also has a scheduled restart, set the backup some time before it. A scheduled
   restart that comes due during a backup waits for it, up to 15 minutes, and then restarts
@@ -274,6 +275,22 @@ until that folder has been removed there.
   Plugins come from Modrinth only; CurseForge is not available for these servers. For Paper and
   Purpur the search matches projects tagged paper, purpur, spigot, or bukkit; for Folia it matches
   only projects tagged folia.
+- **Plugins on remote hosts.** A Paper, Purpur or Folia server on the **Remote Hosts** page has a
+  **Plugins** button (the puzzle piece). Its window shows every jar in the server's `plugins/`
+  folder, with the name and version the plugin declares; jars you copied to the host yourself are
+  listed too, unless their name has characters other than letters, digits, spaces and
+  `. _ + - ( ) [ ]` (rename such a file on the host to manage it here).
+  - **Install:** search Modrinth in the window and press **Install**. The newest version for the
+    server's Minecraft version is chosen (a release if there is one). The host downloads it from
+    Modrinth itself and keeps it only if its checksum matches. You can install while the server
+    runs; the plugin is loaded the next time the server starts.
+  - **Turn off / on** and **Remove** need the server to be stopped. A plugin that is turned off
+    stays on the host as `<name>.jar.disabled`. Removing a plugin deletes its jar only: the folder
+    with its settings and data stays in `plugins/`.
+  - A plugin the host installed is not installed a second time in another version: remove it
+    first. The host does not recognise a plugin you copied there by hand as the same plugin. Plugins that a plugin depends on are not installed with it; install them the same way.
+  - The host needs `msmd` 0.5.0 or newer. Mods of Fabric, Forge, NeoForge and Quilt servers on
+    remote hosts are not managed by the app.
 - **Enable or disable** an installed mod with its switch. Disabled mods stay on disk but are not loaded.
 - **Remove** a mod to delete its file.
 - The **Modpacks** page deploys a modpack as a whole, which sets up the loader and the pack's mods in
