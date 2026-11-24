@@ -1,0 +1,28 @@
+[19:37:30 INFO]: The game is running normally
+[19:37:30 INFO]: Target tick rate: 20.0 per second.
+Average time per tick: 0.4ms (Target: 50.0ms)
+[19:37:30 INFO]: Percentiles: P50: 0.4ms P95: 0.5ms P99: 0.9ms. Sample: 100
+[19:37:32 INFO]: The game is sprinting
+[19:37:35 INFO]: The game is sprinting
+[19:37:35 INFO]: Target tick rate: 20.0 per second (ignored, reference only).
+Average time per tick: 0.0ms
+[19:37:35 INFO]: Percentiles: P50: 0.0ms P95: 0.0ms P99: 0.0ms. Sample: 100
+[19:37:37 INFO]: Sprint completed with 154128 ticks per second, or 0.01 ms per tick
+[19:37:37 INFO]: Interrupted the current tick sprint
+[19:37:39 INFO]: The game is frozen
+[19:37:41 INFO]: The game is frozen
+[19:37:41 INFO]: Target tick rate: 20.0 per second.
+Average time per tick: 0.1ms (Target: 50.0ms)
+[19:37:41 INFO]: Percentiles: P50: 0.1ms P95: 0.2ms P99: 1.6ms. Sample: 100
+[19:37:43 INFO]: Stepping 5 tick(s)
+[19:37:45 INFO]: The game is frozen
+[19:37:45 INFO]: Target tick rate: 20.0 per second.
+Average time per tick: 0.1ms (Target: 50.0ms)
+[19:37:45 INFO]: Percentiles: P50: 0.1ms P95: 0.2ms P99: 1.2ms. Sample: 100
+[19:37:47 INFO]: The game is running normally
+[19:37:49 INFO]: Set the target tick rate to 40.0 per second
+[19:37:52 INFO]: The game is running normally
+[19:37:52 INFO]: Target tick rate: 40.0 per second.
+Average time per tick: 0.1ms (Target: 25.0ms)
+[19:37:52 INFO]: Percentiles: P50: 0.1ms P95: 0.1ms P99: 0.2ms. Sample: 100
+[19:37:54 INFO]: Set the target tick rate to 20.0 per second

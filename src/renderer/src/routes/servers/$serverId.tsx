@@ -13,6 +13,7 @@ import { ServerPropertiesEditor } from '../../components/servers/ServerPropertie
 import { ServerRestartSchedule } from '../../components/servers/ServerRestartSchedule'
 import { ServerBackups } from '../../components/servers/ServerBackups'
 import { ServerBackupSchedule } from '../../components/servers/ServerBackupSchedule'
+import { TickTimeStat } from '../../components/servers/TickTimeStat'
 import { useState, useEffect } from 'react'
 
 export const Route = createFileRoute('/servers/$serverId')({
@@ -44,6 +45,24 @@ function ServerDetailPage() {
       }
     } else {
       setTelemetry(null)
+    }
+  }, [server?.status, server?.id])
+
+  // The tick time is asked of the server itself, and every question lands in
+  // its log file: main only asks while this page keeps saying it is showing
+  // the numbers.
+  useEffect(() => {
+    if (server?.status !== 'running') return
+    const id = server.id
+    const renew = (): void => {
+      if (document.visibilityState === 'visible') void window.api.watchTelemetry(id)
+    }
+    renew()
+    const timer = setInterval(renew, 5000)
+    document.addEventListener('visibilitychange', renew)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', renew)
     }
   }, [server?.status, server?.id])
 
@@ -274,6 +293,7 @@ function ServerDetailPage() {
                       />
                       <Text size="sm" fw={500} c="dimmed">Players Online</Text>
                     </Stack>
+                    <TickTimeStat tick={telemetry.tick} status={telemetry.tickStatus} now={telemetry.timestamp} />
                   </Group>
                 ) : (
                   <Text c="dimmed" size="sm" ta="center" py="md">Waiting for telemetry data...</Text>

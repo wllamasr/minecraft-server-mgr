@@ -8,6 +8,22 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Tick time** for local servers, next to CPU, memory and players on the server page: how long
+  the server needs for one tick against the time it has (50 ms at 20 ticks per second), with the
+  ticks per second it can keep up and the 95th percentile.
+  - The numbers are the server's own answer to `tick query`, so this needs Minecraft 1.20.3 or
+    newer; older versions, and server software that does not answer the command, show a dash and
+    say why. A dash is also shown while there is no recent answer, never a made-up value.
+  - The server is asked every 15 seconds, only while its page is open and the window is visible,
+    only once it has finished starting, and never while it is stopping. After three questions
+    without an answer it is left alone until its next start (or until it does answer one, for
+    instance a `tick query` you type).
+  - While the game is sprinting or frozen (`/tick sprint`, `/tick freeze`) the panel says so
+    instead of showing ticks per second.
+  - The answers to the app's questions are not shown in the app's console; they do appear in the
+    server's own `logs/latest.log` (four lines per question). An answer to a `tick query` you
+    type yourself is shown as usual.
+  - Servers on remote hosts do not report metrics yet.
 - **Backups** for local servers: a new **Backups** tab on the server page with **Back up now**,
   the list of backups, **Restore** and **Delete**.
   - A backup is a standard zip of the server folder (world, settings, mods or plugins, the server

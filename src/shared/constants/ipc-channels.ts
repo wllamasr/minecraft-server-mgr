@@ -19,6 +19,9 @@ export const IPC_CHANNELS = {
   // Console
   CONSOLE_SEND_COMMAND: 'console:send-command',
 
+  // Telemetry
+  TELEMETRY_WATCH: 'telemetry:watch',
+
   // Config
   CONFIG_READ_SERVER_PROPERTIES: 'config:read-server-properties',
   CONFIG_WRITE_SERVER_PROPERTIES: 'config:write-server-properties',

@@ -64,8 +64,14 @@ the server is stopped, restarted or deleted, or the app exits, while it runs.
 | ------------------------------- | ------------------------ | ------------------------------ | ------------------- |
 | `sendCommand(id, command)`      | `console:send-command`   | `{ serverId, command }`        | `boolean`           |
 | `getServerLogs(id)`             | `console:get-logs` ¹     | `string`                       | `ServerLogEntry[]`  |
+| `watchTelemetry(id)`            | `telemetry:watch`        | `string`                       | `void`              |
 
 ¹ raw-string channel.
+
+`watchTelemetry(id)` says that a server's numbers are on screen. The tick time in
+`ServerTelemetry.tick` is only asked of the server while this is repeated (the server page does
+so every 5 seconds; one call counts for 15); CPU, memory and players are reported regardless.
+`tick.at` is when the server answered: a consumer must not show an old sample as current.
 
 ## Configuration
 

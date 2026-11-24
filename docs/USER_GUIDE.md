@@ -287,6 +287,19 @@ While a server runs, MSM shows its **CPU** and **memory** use. Use this to tune 
 if the server regularly reaches its max RAM, raise it; if it stays far below, you can lower it to
 leave more memory for the rest of your system.
 
+Next to them are the **players online** and the **tick time**: how many milliseconds the server
+needs for one game tick. A server has 50 ms per tick (20 ticks per second); while the tick time
+stays below that the game runs at full speed, and above it the game slows down — the line under
+the number shows the ticks per second the server can keep up and the 95th percentile ("P95"),
+which tells you about spikes the average hides.
+
+- The tick time comes from the server's own `tick query` command, so it needs **Minecraft 1.20.3
+  or newer**. On older versions, or with server software that does not answer the command, the
+  panel shows a dash and says why.
+- MSM asks the server every 15 seconds, and only while that server's page is open. Each question
+  leaves four lines in the server's `logs/latest.log`; they are kept out of the console in MSM.
+- Servers on remote hosts do not show metrics yet.
+
 ## 10. Java
 
 MSM scans for JDKs in `JAVA_HOME`, your `PATH`, and common install folders, then picks a suitable
@@ -326,7 +339,7 @@ project's GitHub releases.
 | "Java not found"                          | Install the Java version listed in section 1 (25, 21, 17, or 8) and restart MSM.                 |
 | CurseForge search returns nothing or fails | Add your CurseForge API key in Settings.                                     |
 | Players cannot connect                    | Port forwarding and the Windows firewall. The port must be open in both.     |
-| Server is slow or lags                    | Check CPU and memory on the server page. Raise RAM or reduce mods.           |
+| Server is slow or lags                    | Check CPU, memory and tick time on the server page. Raise RAM or reduce mods. |
 | Mod does not load                         | Confirm the mod matches the Minecraft version and loader, and read the console. |
 
 When reporting a problem, include the relevant log lines from the logs folder (redact anything

@@ -40,7 +40,7 @@ starts the auto-updater.
 | `server-manager`        | Server CRUD, jar download, spawning/stopping the Java process        |
 | `config-manager`        | Read/write `server.properties`; app settings key-value store         |
 | `console-manager`       | Buffers server stdout/stderr, forwards commands to stdin             |
-| `telemetry-manager`     | Samples CPU/RAM of a running server via `pidusage`                   |
+| `telemetry-manager`     | Samples CPU/RAM (`pidusage`), players (server list ping) and tick time (`tick query`, while watched) |
 | `java-detector`         | Discovers JDKs and picks the best one per Minecraft version          |
 | `mod-loader-installer`  | Installs Forge / NeoForge / Fabric / Quilt                           |
 | `mod-manager`           | Unifies Modrinth + CurseForge search/install/uninstall              |

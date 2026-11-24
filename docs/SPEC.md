@@ -226,7 +226,21 @@ control.
 
 - **FR-23** While running, the server streams stdout/stderr to a live console, and the user
   can send commands to stdin.
-- **FR-24** While running, the app reports the server's CPU % and memory usage.
+- **FR-24** While running, the app reports the server's CPU % and memory usage, and the players
+  online.
+- **FR-24a** While a running local server's page is open, the app reports its tick time: the
+  average time per tick against the target, the ticks per second that follow from it (never more
+  than the target rate) and the percentiles, as answered by the server to `tick query`
+  (Minecraft 1.20.3+).
+  - The server is asked at most every 15 seconds, only while a page keeps renewing its interest
+    (a lease of 15 seconds), only after the server has printed its "Done" line, and not while it
+    is stopping. After three unanswered questions it is not asked again in that run, unless
+    an answer does arrive (to a question asked by someone else).
+  - While the game is sprinting or frozen that state is reported instead of ticks per second.
+  - Only lines logged by the server itself are read; chat and `/say` cannot produce a value.
+  - Without a recent answer (45 seconds) no value is shown; an unsupported version and a server
+    that does not answer are told apart.
+  - The answer to a question of the app is not shown in the app's console; any other answer is.
 
 ### 4.7 Application
 

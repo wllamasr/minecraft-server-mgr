@@ -176,6 +176,9 @@ const api = {
 
   installUpdate: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.APP_INSTALL_UPDATE),
 
+  /** Say that a server's numbers are on screen (again every few seconds). */
+  watchTelemetry: (serverId: string): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.TELEMETRY_WATCH, serverId),
+
   onTelemetry: (serverId: string, callback: (data: import('../shared/types/telemetry.types').ServerTelemetry) => void) => {
     const channel = `server-telemetry:${serverId}`
     const listener = (_e: unknown, data: import('../shared/types/telemetry.types').ServerTelemetry) => callback(data)

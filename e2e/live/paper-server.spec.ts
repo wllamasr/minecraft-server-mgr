@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { execFileSync } from 'child_process'
-import { mkdtempSync, existsSync, rmSync, writeFileSync } from 'fs'
+import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
 
@@ -132,6 +132,44 @@ test('creates, boots and stops a Paper server with optimized JVM flags', async (
     expect(cmdline).toContain(`-Xms${running.maxRam}`)
     expect(cmdline).toContain(`-Xmx${running.maxRam}`)
   }
+
+  // ── Tick time ─────────────────────────────────────────
+  // The page is showing this server, so the app asks it how long its ticks
+  // take ("tick query") and shows the answer.
+  const latestLog = join(server.absolutePath, 'logs', 'latest.log')
+  const answersInServerLog = (): number => (readFileSync(latestLog, 'utf8').match(/Target tick rate:/g) ?? []).length
+  const answersInAppConsole = async (): Promise<number> => ((await logText()).match(/Average time per tick:/g) ?? []).length
+
+  const tickTime = page.getByTestId('tick-time')
+  await expect(tickTime).toHaveAttribute('data-state', 'ok', { timeout: 30_000 })
+  await expect(page.getByTestId('tick-time-ms')).toHaveText(/^\d+\.\d$/)
+  await expect(page.getByTestId('tick-time-details')).toHaveText(/^\d+\.\d TPS · P95 \d+\.\d ms$/)
+  // The server did answer, in its own log; the app's console does not show
+  // the answers to the app's own questions.
+  expect(answersInServerLog()).toBeGreaterThan(0)
+  expect(await answersInAppConsole()).toBe(0)
+
+  // An answer to a question somebody typed is theirs to see.
+  await page.evaluate((sid) => (window as unknown as ApiWindow).api.sendCommand(sid, 'tick query'), id)
+  await expect.poll(answersInAppConsole, { timeout: 10_000 }).toBe(1)
+
+  // Nobody looking, nobody asking: away from the page the questions stop.
+  await page.evaluate(() => {
+    window.location.hash = '#/'
+  })
+  await expect(tickTime).toHaveCount(0)
+  await page.waitForTimeout(20_000) // the last "I am looking" runs out
+  const whileAway = answersInServerLog()
+  await page.waitForTimeout(40_000)
+  expect(answersInServerLog()).toBe(whileAway)
+
+  // Back on the page they start again.
+  await page.evaluate((sid) => {
+    window.location.hash = `#/servers/${sid}`
+  }, id)
+  await expect.poll(answersInServerLog, { timeout: 30_000 }).toBeGreaterThan(whileAway)
+  await expect(tickTime).toHaveAttribute('data-state', 'ok', { timeout: 10_000 })
+  expect(await answersInAppConsole()).toBe(1)
 
   // Paper created its plugin directory; nothing was put in mods/.
   expect(existsSync(join(server.absolutePath, 'plugins'))).toBe(true)

@@ -6,6 +6,7 @@ import * as configManager from '../services/config-manager'
 import * as modManager from '../services/mod-manager'
 import * as hostsManager from '../services/hosts-manager'
 import * as backupManager from '../services/backup-manager'
+import { watchTelemetry } from '../services/telemetry-manager'
 import { shutdownPendingCount } from '../services/app-shutdown'
 import { detectJavaInstallations } from '../services/java-detector'
 import { getLoaderVersions } from '../services/mod-loader-installer'
@@ -72,6 +73,13 @@ export function registerIpcHandlers(): void {
   // ─── Console ───────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.CONSOLE_SEND_COMMAND, (_e, { serverId, command }: { serverId: string; command: string }) => {
     return consoleManager.sendCommand(serverId, command)
+  })
+
+  // ─── Telemetry ─────────────────────────────────────────
+  // "This server's numbers are on screen": said again every few seconds by
+  // the page that shows them.
+  ipcMain.handle(IPC_CHANNELS.TELEMETRY_WATCH, (_e, serverId: string) => {
+    if (typeof serverId === 'string') watchTelemetry(serverId)
   })
 
   ipcMain.handle('console:get-logs', (_e, serverId: string) => {

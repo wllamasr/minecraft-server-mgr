@@ -32,6 +32,20 @@ export function onLogLine(serverId: string, listener: (line: string) => void): (
   }
 }
 
+const lineFilters = new Map<string, (line: string) => boolean>()
+
+/**
+ * Have a say on every line a server process prints (not its error stream):
+ * the filter sees each line first, and one it returns true for is kept out of
+ * the console the app shows. Listeners (onLogLine) are told about every line
+ * all the same, and the server's own log file is not the app's to change.
+ * One filter per server; pass null to remove it.
+ */
+export function setLineFilter(serverId: string, filter: ((line: string) => boolean) | null): void {
+  if (filter) lineFilters.set(serverId, filter)
+  else lineFilters.delete(serverId)
+}
+
 /** Append an entry to a server's buffer and broadcast it to every window. */
 function record(managed: ManagedConsole, entry: ServerLogEntry): void {
   managed.logBuffer.push(entry)
@@ -75,12 +89,23 @@ export function attachConsole(serverId: string, childProcess: ChildProcess): voi
       level = 'ERROR'
     }
 
-    record(managed, {
-      serverId,
-      line,
-      timestamp: Date.now(),
-      level
-    })
+    let hidden = false
+    if (!isErrorStream) {
+      try {
+        hidden = lineFilters.get(serverId)?.(line) === true
+      } catch (err) {
+        log.error('[Console] The line filter failed:', err)
+      }
+    }
+
+    if (!hidden) {
+      record(managed, {
+        serverId,
+        line,
+        timestamp: Date.now(),
+        level
+      })
+    }
 
     if (!isErrorStream) {
       for (const listener of [...(lineListeners.get(serverId) ?? [])]) {
@@ -140,17 +165,19 @@ export function pushLog(serverId: string, line: string, level?: ServerLogEntry['
 }
 
 /**
- * Send a command to a running server's stdin.
+ * Send a command to a running server's stdin. `quiet` is for the questions
+ * the app asks by itself every few seconds: they are not written to the app's
+ * log.
  */
-export function sendCommand(serverId: string, command: string): boolean {
+export function sendCommand(serverId: string, command: string, options: { quiet?: boolean } = {}): boolean {
   const managed = consoles.get(serverId)
   if (!managed || !managed.process?.stdin?.writable) {
-    log.warn(`[Console] Cannot send command to server ${serverId}: not running`)
+    if (!options.quiet) log.warn(`[Console] Cannot send command to server ${serverId}: not running`)
     return false
   }
 
   managed.process.stdin.write(command + '\n')
-  log.info(`[Console] Sent command to ${serverId}: ${command}`)
+  if (!options.quiet) log.info(`[Console] Sent command to ${serverId}: ${command}`)
   return true
 }
 
