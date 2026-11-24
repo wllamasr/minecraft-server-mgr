@@ -39,7 +39,7 @@ describe('supportsTickQuery', () => {
 describe('reading what a real server answered', () => {
   // The console of Paper 1.21.11, captured as it came out of the process.
   const lines = readFileSync(join(__dirname, '__fixtures__', 'tick-query-paper-1.21.11.txt'), 'utf8')
-    .split('\n')
+    .split(/\r?\n/)
     .filter(Boolean)
 
   it('finds both answers and nothing else', () => {
@@ -66,7 +66,7 @@ describe('reading a real server that sprints, is frozen and changes its tick rat
   // Paper 1.21.11 again: tick query after `tick sprint`, `tick freeze`,
   // `tick step` and `tick rate 40`, with what those commands answered.
   const lines = readFileSync(join(__dirname, '__fixtures__', 'tick-query-paper-1.21.11-modes.txt'), 'utf8')
-    .split('\n')
+    .split(/\r?\n/)
     .filter(Boolean)
 
   it('reads every answer, in whatever state the game is', () => {
