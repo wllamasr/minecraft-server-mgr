@@ -135,6 +135,7 @@ func TestAddonRoutes(t *testing.T) {
 		{http.MethodPost, "/v1/servers/nope/addons", `{"versionId":"abc"}`},
 		{http.MethodPatch, "/v1/servers/nope/addons/x.jar", `{"enabled":false}`},
 		{http.MethodDelete, "/v1/servers/nope/addons/x.jar", ""},
+		{http.MethodPost, "/v1/servers/nope/addons/x.jar/update", `{"versionId":"abc"}`},
 	} {
 		if status, body := send(c.method, c.path, c.body); status != http.StatusNotFound || !strings.Contains(body, `"error":"server not found"`) {
 			t.Errorf("%s %s: %d %s", c.method, c.path, status, body)
@@ -147,6 +148,9 @@ func TestAddonRoutes(t *testing.T) {
 	}
 	if status, _ := send(http.MethodPost, "/v1/servers/nope/addons", `not json`); status != http.StatusBadRequest {
 		t.Errorf("POST with a bad body: %d", status)
+	}
+	if status, _ := send(http.MethodPost, "/v1/servers/nope/addons/x.jar/update", `not json`); status != http.StatusBadRequest {
+		t.Errorf("update with a bad body: %d", status)
 	}
 }
 

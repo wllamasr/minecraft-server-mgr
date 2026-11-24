@@ -163,10 +163,13 @@ other calls. `installRemoteAddon` sends only the id of a Modrinth version (find 
 itself. It resolves once the host accepted the request; follow `RemoteServer.operation` (`kind:
 'install'`, `phase: 'downloading'`) and read `RemoteServer.lastOperation` (`addon` is the file
 that was installed, `warning` is set when the server was running and has to be restarted to load
-it). `setRemoteAddonEnabled` and `removeRemoteAddon` are refused with `Stop the server before
+it). `updateRemoteAddon(hostId, serverId, file, versionId)` replaces a plugin the host installed from
+Modrinth with another version of its project (msmd 0.6.0+). It resolves the same way (operation
+`kind: 'update'`, `lastOperation.addon` is the new file), and the server must be stopped.
+`setRemoteAddonEnabled` and `removeRemoteAddon` are refused with `Stop the server before
 removing a plugin or turning one off or on` unless the server is stopped. `file` must look like
 a jar's name and `versionId` like a Modrinth id; anything else is rejected before a request is
-made. A host with an older msmd rejects all four with the "older msmd" message.
+made. A host with an older msmd rejects all five with the "older msmd" message.
 
 **Remote backups** are made, kept and restored by `msmd` on the host; nothing is transferred to
 the app. `createRemoteBackup` and `restoreRemoteBackup` only start the operation and resolve with

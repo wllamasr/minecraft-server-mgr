@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: msmd — Minecraft Server Manager daemon
-  version: 0.5.0
+  version: 0.6.0
   description: >
     HTTP + Server-Sent-Events API for managing Minecraft servers on a remote
     host. All endpoints are served over TLS. Every route except /v1/health and
@@ -274,6 +274,37 @@ paths:
         "400": { description: Malformed backup id or body }
         "404": { description: Unknown server ("server not found") or backup ("backup not found") }
         "409": { description: The server is running, or another operation is in progress (see POST backups) }
+  /v1/servers/{id}/addons/{file}/update:
+    post:
+      summary: Update a plugin to another version from Modrinth
+      description: >-
+        Returns at once with the id of an operation of kind "update"; follow it in the server's
+        "operation" and read the outcome in its "lastOperation" (same id). The plugin must have
+        been installed from Modrinth by the daemon, and the version must be one of the same
+        project. The server must be stopped, and a start is refused until the update has ended. The
+        new file keeps the state of the old one: a plugin that is off stays off. The old jar is
+        set aside only once the new one is downloaded and checked. Refusals that are only known
+        once the file is looked at (another project, a plugin not installed from Modrinth, the
+        same version, a name in use) are reported in "lastOperation". Since 0.6.0.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: file, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionId]
+              properties:
+                versionId:
+                  type: string
+                  description: The id of a Modrinth version, and nothing else.
+      responses:
+        "202": { description: 'Accepted: {"ok": true, "operationId": "..."}' }
+        "400": { description: Malformed body or version id }
+        "404": { description: Unknown server ("server not found") or plugin ("plugin not found") }
+        "409": { description: The server is running or starting, or another operation is in progress }
   /v1/servers/{id}/addons:
     get:
       summary: List the plugins of a server

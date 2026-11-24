@@ -80,6 +80,73 @@ func (m *Manager) RequestAddonInstall(id, versionID string) (string, error) {
 	return op.state.ID, nil
 }
 
+// RequestAddonUpdate starts replacing the plugin file of a stopped server, one
+// installed from Modrinth, with another version of the same project, and
+// returns at once with the id of the operation. The server must be stopped,
+// and stays so until the update has ended.
+//
+// As for an installation, only the version's id comes from the caller.
+func (m *Manager) RequestAddonUpdate(id, file, versionID string) (string, error) {
+	s, err := m.store.Get(id)
+	if err != nil {
+		return "", err
+	}
+	dir, err := addonDir(s)
+	if err != nil {
+		return "", err
+	}
+	if !addons.ValidFileName(file) {
+		return "", ErrAddonNotFound
+	}
+	if err := addons.Lookup(dir, file); err != nil {
+		return "", err
+	}
+	if !addons.ValidVersionID(versionID) {
+		return "", errors.New("invalid version id")
+	}
+	op, s, _, err := m.beginOperation(id, kindUpdate)
+	if err != nil {
+		return "", err
+	}
+	go m.runOperation(op, s, func() (string, string, error) {
+		name, err := m.runAddonUpdate(op, s, dir, file, versionID)
+		if err != nil {
+			m.hub.PushLog(id, "Plugin not updated: "+err.Error(), "ERROR")
+			return "", "", err
+		}
+		m.hub.PushLog(id, "Plugin "+file+" updated to "+name+" (checksum OK).", "INFO")
+		return name, "", nil
+	})
+	return op.state.ID, nil
+}
+
+func (m *Manager) runAddonUpdate(op *operation, s store.Server, dir, file, versionID string) (string, error) {
+	ctx, cancel := context.WithTimeout(op.ctx, addons.InstallTimeout())
+	defer cancel()
+	explain := func(err error) error {
+		if cause := context.Cause(op.ctx); cause != nil {
+			return fmt.Errorf("%w: %s", backup.ErrCancelled, cause.Error())
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return errors.New("Modrinth took too long to answer; nothing was changed")
+		}
+		return err
+	}
+
+	v, err := addons.Resolve(ctx, versionID)
+	if err != nil {
+		return "", explain(err)
+	}
+	if !v.RunsOn(s.ModLoader) {
+		return "", fmt.Errorf("This version is not built for %s servers; nothing was changed", s.ModLoader)
+	}
+	m.hub.PushLog(s.ID, "Updating plugin "+file+" to "+v.FileName+" from Modrinth…", "INFO")
+	if err := addons.Update(ctx, dir, file, v, m.progress(op)); err != nil {
+		return "", explain(err)
+	}
+	return v.FileName, nil
+}
+
 func (m *Manager) runAddonInstall(op *operation, s store.Server, dir, versionID string) (string, error) {
 	ctx, cancel := context.WithTimeout(op.ctx, addons.InstallTimeout())
 	defer cancel()
@@ -142,7 +209,7 @@ func (m *Manager) changeAddon(id, file string, change func(dir string) error) er
 	case m.ops[id] != nil && m.ops[id].state.Kind == kindInstall:
 		return conflictError("A plugin is being installed on this server; try again once that is done")
 	case m.ops[id] != nil:
-		return conflictError("A backup or a restore of this server is in progress; try again once that is done")
+		return conflictError("A backup, a restore or a plugin update of this server is in progress; try again once that is done")
 	case m.running[id] != nil || m.starting[id] > 0 || m.restarting[id] || m.restartTimers[id] != nil:
 		return conflictError("Stop the server before removing a plugin or turning one off or on")
 	}

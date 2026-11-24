@@ -287,6 +287,10 @@ until that folder has been removed there.
   - **Turn off / on** and **Remove** need the server to be stopped. A plugin that is turned off
     stays on the host as `<name>.jar.disabled`. Removing a plugin deletes its jar only: the folder
     with its settings and data stays in `plugins/`.
+  - **Update:** a plugin the host installed from Modrinth shows an **Update to …** button when
+    Modrinth has a newer release of it for this server. The server must be stopped. The new file
+    keeps the state of the old one: a plugin that is off stays off. A plugin you copied to the host
+    by hand cannot be updated here.
   - A plugin the host installed is not installed a second time in another version: remove it
     first. The host does not recognise a plugin you copied there by hand as the same plugin. Plugins that a plugin depends on are not installed with it; install them the same way.
   - The host needs `msmd` 0.5.0 or newer. Mods of Fabric, Forge, NeoForge and Quilt servers on

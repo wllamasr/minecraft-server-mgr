@@ -25,7 +25,7 @@ const (
 	fileHost = "cdn.modrinth.com"
 	// maxFileSize is the largest plugin that is installed.
 	maxFileSize = 256 << 20
-	// installTimeout bounds everything an installation asks of Modrinth.
+	// installTimeout bounds everything an installation or an update asks of Modrinth.
 	installTimeout = 5 * time.Minute
 )
 
@@ -212,12 +212,146 @@ func Install(ctx context.Context, dir string, v Version, progress func(done, tot
 	if err := CheckInstallable(dir, v); err != nil {
 		return err
 	}
+	tmp, err := download(ctx, dir, v, progress)
+	if err != nil {
+		return err
+	}
+	// Checked again: the folder may have changed while the file came down.
+	if err := CheckInstallable(dir, v); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, filepath.Join(dir, v.FileName)); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("the plugin's file could not be put in place: %w", plain(err))
+	}
+	origins := readOrigins(dir)
+	origins[v.FileName] = origin{ProjectID: v.ProjectID, VersionID: v.ID, SHA512: v.SHA512, SizeBytes: v.Size}
+	// The plugin is installed either way; without this it only shows as a
+	// file of unknown origin.
+	_ = writeOrigins(dir, origins)
+	return nil
+}
+
+// Update replaces the plugin oldFile, installed from Modrinth, with the version
+// v of the same project. The new file takes the state the old one had: a jar
+// that was off stays off. The old jars are set aside only once the new one is
+// downloaded and checked, and they come back if it cannot be put in place. The
+// caller makes sure the server is stopped.
+func Update(ctx context.Context, dir, oldFile string, v Version, progress func(done, total int64)) error {
+	if _, err := checkUpdatable(dir, oldFile, v); err != nil {
+		return err
+	}
+	tmp, err := download(ctx, dir, v, progress)
+	if err != nil {
+		return err
+	}
+	fail := func(err error) error {
+		os.Remove(tmp)
+		return err
+	}
+	// Checked again: the folder may have changed while the file came down.
+	olds, err := checkUpdatable(dir, oldFile, v)
+	if err != nil {
+		return fail(err)
+	}
+	enabled := false
+	for _, e := range olds {
+		enabled = enabled || e.enabled
+	}
+	target := v.FileName
+	if !enabled {
+		target += disabledSuffix
+	}
+
+	var moved []entry
+	restore := func() {
+		for _, e := range moved {
+			_ = os.Rename(filepath.Join(dir, e.onDisk+asideSuffix), filepath.Join(dir, e.onDisk))
+		}
+	}
+	for _, e := range olds {
+		if err := os.Rename(filepath.Join(dir, e.onDisk), filepath.Join(dir, e.onDisk+asideSuffix)); err != nil {
+			restore()
+			return fail(fmt.Errorf("the plugin's file could not be set aside: %w", plain(err)))
+		}
+		moved = append(moved, e)
+	}
+	if err := os.Rename(tmp, filepath.Join(dir, target)); err != nil {
+		restore()
+		return fail(fmt.Errorf("the plugin's file could not be put in place: %w", plain(err)))
+	}
+	for _, e := range moved {
+		// A leftover of a set-aside jar is not a plugin the server loads.
+		_ = os.Remove(filepath.Join(dir, e.onDisk+asideSuffix))
+	}
+
+	origins := readOrigins(dir)
+	delete(origins, oldFile)
+	origins[v.FileName] = origin{ProjectID: v.ProjectID, VersionID: v.ID, SHA512: v.SHA512, SizeBytes: v.Size}
+	_ = writeOrigins(dir, origins)
+	return nil
+}
+
+// asideSuffix is added to the name of an old jar while its replacement is put
+// in place. The name is not one the server loads.
+const asideSuffix = ".msmd-old"
+
+// checkUpdatable returns the jars of oldFile, if v can replace them: they were
+// installed from the same Modrinth project, they are unchanged since, and v is
+// another version that no other plugin of the folder is called by.
+func checkUpdatable(dir, oldFile string, v Version) ([]entry, error) {
+	if !ValidFileName(oldFile) {
+		return nil, ErrNotFound
+	}
+	entries, err := scan(dir)
+	if err != nil {
+		return nil, err
+	}
+	var olds []entry
+	for _, e := range entries {
+		switch {
+		case e.file == oldFile:
+			olds = append(olds, e)
+		case strings.EqualFold(e.file, v.FileName):
+			return nil, fmt.Errorf("%s is already installed", e.file)
+		}
+	}
+	if len(olds) == 0 {
+		return nil, ErrNotFound
+	}
+	o, ok := readOrigins(dir)[oldFile]
+	if !ok || o.ProjectID != v.ProjectID {
+		return nil, errors.New("This plugin was not installed from this project on Modrinth, so it cannot be updated from there")
+	}
+	for _, e := range olds {
+		if e.info.Size() != o.SizeBytes {
+			return nil, errors.New("This plugin changed since the host installed it, so it cannot be updated")
+		}
+	}
+	if o.VersionID == v.ID {
+		return nil, errors.New("This version is already installed")
+	}
+	if v.FileName != oldFile {
+		for _, name := range []string{v.FileName, v.FileName + disabledSuffix} {
+			if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+				return nil, fmt.Errorf("%s is already in the folder", name)
+			}
+		}
+	}
+	return olds, nil
+}
+
+// download fetches the file of v into dir, under a name the server does not
+// load, and checks it against Modrinth's size and checksum. On success the
+// file is left for the caller to put in place; on failure nothing is left.
+func download(ctx context.Context, dir string, v Version, progress func(done, total int64)) (string, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return fmt.Errorf("the plugins folder could not be made: %w", plain(err))
+		return "", fmt.Errorf("the plugins folder could not be made: %w", plain(err))
 	}
 	resp, err := get(ctx, v.URL, fileHost)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -225,7 +359,7 @@ func Install(ctx context.Context, dir string, v Version, progress func(done, tot
 	tmp := filepath.Join(dir, v.FileName+".part")
 	out, err := createNew(tmp)
 	if err != nil {
-		return fmt.Errorf("the plugin's file could not be written: %w", plain(err))
+		return "", fmt.Errorf("the plugin's file could not be written: %w", plain(err))
 	}
 	keep := false
 	defer func() {
@@ -243,11 +377,11 @@ func Install(ctx context.Context, dir string, v Version, progress func(done, tot
 		if n > 0 {
 			done += int64(n)
 			if done > v.Size {
-				return errors.New("the download is larger than Modrinth says the file is; it was not installed")
+				return "", errors.New("the download is larger than Modrinth says the file is; it was not installed")
 			}
 			hash.Write(buf[:n])
 			if _, werr := out.Write(buf[:n]); werr != nil {
-				return fmt.Errorf("the plugin's file could not be written: %w", plain(werr))
+				return "", fmt.Errorf("the plugin's file could not be written: %w", plain(werr))
 			}
 			if progress != nil {
 				progress(done, v.Size)
@@ -258,33 +392,20 @@ func Install(ctx context.Context, dir string, v Version, progress func(done, tot
 		}
 		if err != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				return "", ctx.Err()
 			}
-			return fmt.Errorf("the download failed: %w", err)
+			return "", fmt.Errorf("the download failed: %w", err)
 		}
 	}
 	if done != v.Size || hex.EncodeToString(hash.Sum(nil)) != v.SHA512 {
-		return errors.New("the downloaded file does not match Modrinth's checksum; it was not installed")
+		return "", errors.New("the downloaded file does not match Modrinth's checksum; it was not installed")
 	}
 	if err := out.Close(); err != nil {
-		return fmt.Errorf("the plugin's file could not be written: %w", plain(err))
-	}
-	// Checked again: the folder may have changed while the file came down.
-	if err := CheckInstallable(dir, v); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, filepath.Join(dir, v.FileName)); err != nil {
-		return fmt.Errorf("the plugin's file could not be put in place: %w", plain(err))
+		return "", fmt.Errorf("the plugin's file could not be written: %w", plain(err))
 	}
 	keep = true
-
-	origins := readOrigins(dir)
-	origins[v.FileName] = origin{ProjectID: v.ProjectID, VersionID: v.ID, SHA512: v.SHA512, SizeBytes: v.Size}
-	// The plugin is installed either way; without this it only shows as a
-	// file of unknown origin.
-	_ = writeOrigins(dir, origins)
-	return nil
+	return tmp, nil
 }
 
-// InstallTimeout is how long an installation may take in all.
+// InstallTimeout is how long an installation or an update may take in all.
 func InstallTimeout() time.Duration { return installTimeout }

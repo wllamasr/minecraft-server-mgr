@@ -20,10 +20,16 @@ All notable changes to this project are documented here. The format follows
     Removing a plugin or turning one off or on needs the server to be stopped.
   - Removing a plugin deletes its jar; the folder with its settings and data stays on the host.
   - One file per plugin: a second version of a plugin the host installed is refused (remove the
-    first). A plugin copied to the host by hand is not recognised as the same plugin. There is no "update" yet, and plugins that a plugin needs are not installed with it.
-  - The host needs `msmd` 0.5.0 or newer.
+    first). A plugin copied to the host by hand is not recognised as the same plugin. Plugins that a plugin needs are not installed with it.
+  - **Update**: a plugin the host installed from Modrinth can be replaced by the newest version
+    of its project, with the same download and checksum rules. The server must be stopped. The
+    new file keeps the state of the old one (a plugin that is off stays off), and the old jar is
+    kept until the new one is in place. A plugin copied to the host by hand cannot be updated.
+  - The host needs `msmd` 0.6.0 or newer.
 - `msmd` 0.5.0: `GET`/`POST /v1/servers/{id}/addons`, `PATCH`/`DELETE
   /v1/servers/{id}/addons/{file}`; the server's `operation` may now be of kind `install`.
+- `msmd` 0.6.0: `POST /v1/servers/{id}/addons/{file}/update` (a Modrinth version id in the body);
+  the server's `operation` may now be of kind `update`, which a start waits for, as for a restore.
 - **Tick time** for local servers, next to CPU, memory and players on the server page: how long
   the server needs for one tick against the time it has (50 ms at 20 ticks per second), with the
   ticks per second it can keep up and the 95th percentile.

@@ -5,12 +5,12 @@ import {
 } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { modals } from '@mantine/modals'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { IconDownload, IconSearch, IconTrash } from '@tabler/icons-react'
-import type { ModSearchResponse, RemoteHost, RemoteServer, UnifiedMod } from '@shared/types'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { IconArrowUp, IconDownload, IconSearch, IconTrash } from '@tabler/icons-react'
+import type { ModSearchResponse, RemoteHost, RemoteServer, UnifiedMod, UnifiedModVersion } from '@shared/types'
 import { engineLabel } from '@shared/constants'
 import { formatBytes } from '@shared/utils/format'
-import { pickAddonVersion, type RemoteAddon } from '@shared/utils/remote-addons'
+import { addonUpdateTo, isPluginOperation, pickAddonVersion, type RemoteAddon } from '@shared/utils/remote-addons'
 
 interface Props {
   host: RemoteHost
@@ -21,19 +21,26 @@ interface Props {
   onRefresh: () => void
 }
 
+/** A change to the plugins that this window started and whose outcome it still owes the user. */
+interface Awaited {
+  id: string
+  name: string
+  verb: 'install' | 'update'
+}
+
 const cleanError = (err: Error): string => err.message.replace(/^Error invoking remote method '[^']+': (\w*Error: )?/, '')
 
 /**
  * Plugins of a Paper, Purpur or Folia server on a remote host: see what is in
- * its plugins folder, turn one off or on, remove one, and install one from
- * Modrinth. The search runs here; the host downloads the plugin from Modrinth
- * itself, told only which version, and checks it before keeping it.
+ * its plugins folder, turn one off or on, remove one, install one from
+ * Modrinth, and update one installed that way. The search runs here; the host
+ * downloads the plugin from Modrinth itself, told only which version, and
+ * checks it before keeping it.
  */
 export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) {
   const queryClient = useQueryClient()
   const listKey = ['remote-addons', host.id, server.id]
-  // The installation this window started and whose outcome it still owes the user.
-  const [awaiting, setAwaiting] = useState<{ id: string; name: string } | null>(null)
+  const [awaiting, setAwaiting] = useState<Awaited | null>(null)
   const [typed, setTyped] = useState('')
   const [query, setQuery] = useState('')
 
@@ -46,6 +53,23 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
     queryFn: () => window.api.listRemoteAddons(host.id, server.id),
     retry: 0
   })
+
+  // The versions of each plugin that came from Modrinth: what it can be updated to.
+  const fromModrinth = plugins.filter((p) => p.projectId && p.versionId)
+  const versionQueries = useQueries({
+    queries: fromModrinth.map((p) => ({
+      queryKey: ['remote-addon-versions', server.modLoader, server.minecraftVersion, p.projectId],
+      queryFn: () =>
+        window.api.getModVersions('modrinth', p.projectId as string, server.minecraftVersion, server.modLoader),
+      retry: 0,
+      staleTime: 5 * 60 * 1000
+    }))
+  })
+  const updateFor = (plugin: RemoteAddon): UnifiedModVersion | null => {
+    const at = fromModrinth.indexOf(plugin)
+    const versions = at >= 0 ? (versionQueries[at]?.data as UnifiedModVersion[] | undefined) : undefined
+    return versions && plugin.versionId ? addonUpdateTo(versions, plugin.versionId) : null
+  }
 
   const search = useQuery<ModSearchResponse, Error>({
     queryKey: ['remote-addon-search', server.modLoader, server.minecraftVersion, query],
@@ -63,7 +87,7 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
 
   const operation = server.operation ?? null
   const last = server.lastOperation ?? null
-  const installing = operation?.kind === 'install'
+  const installing = operation !== null && isPluginOperation(operation.kind)
   const working = operation !== null || awaiting !== null
 
   // The server list is polled every few seconds; follow an operation closer.
@@ -84,21 +108,23 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
     queryClient.invalidateQueries({ queryKey: ['remote-addons', host.id, server.id] })
   }, [last?.id, queryClient, host.id, server.id])
 
-  // Report how the installation started here ended.
+  // Report how the change started here ended.
   useEffect(() => {
     if (!awaiting || !last || last.id !== awaiting.id) return
     setAwaiting(null)
     queryClient.invalidateQueries({ queryKey: ['remote-addons', host.id, server.id] })
+    const done = awaiting.verb === 'install' ? 'installed' : 'updated'
+    const failed = awaiting.verb === 'install' ? 'was not installed' : 'was not updated'
     if (last.ok && last.warning) {
-      notifications.show({ color: 'orange', title: `${awaiting.name} installed`, message: `${last.warning}.`, autoClose: 10000 })
+      notifications.show({ color: 'orange', title: `${awaiting.name} ${done}`, message: `${last.warning}.`, autoClose: 10000 })
     } else if (last.ok) {
-      notifications.show({ color: 'green', message: `${awaiting.name} installed. It loads when the server starts.` })
+      notifications.show({ color: 'green', message: `${awaiting.name} ${done}. It loads when the server starts.` })
     } else if (last.cancelled) {
-      notifications.show({ color: 'yellow', message: `${last.error ?? 'Installation cancelled'}.` })
+      notifications.show({ color: 'yellow', message: `${last.error ?? 'Cancelled'}.` })
     } else {
       notifications.show({
         color: 'red',
-        title: `${awaiting.name} was not installed`,
+        title: `${awaiting.name} ${failed}`,
         message: last.error ?? 'Unknown error',
         autoClose: 10000
       })
@@ -113,7 +139,7 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
       queryClient.invalidateQueries({ queryKey: ['remote-addons', host.id, server.id] })
       notifications.show({
         color: 'yellow',
-        message: 'The host no longer reports this installation (msmd may have been restarted). Check the list and the console.',
+        message: 'The host no longer reports this change (msmd may have been restarted). Check the list and the console.',
         autoClose: 10000
       })
     }, 20000)
@@ -128,7 +154,7 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
   }
 
   const install = useMutation({
-    mutationFn: async (project: UnifiedMod) => {
+    mutationFn: async (project: UnifiedMod): Promise<Awaited> => {
       // The newest version for this server's Minecraft version and platform.
       const versions = await window.api.getModVersions('modrinth', project.id, server.minecraftVersion, server.modLoader)
       const version = pickAddonVersion(versions)
@@ -138,7 +164,18 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
         )
       }
       const res = await window.api.installRemoteAddon(host.id, server.id, version.id)
-      return { id: res.operationId, name: project.name }
+      return { id: res.operationId, name: project.name, verb: 'install' }
+    },
+    onSuccess: (started) => {
+      setAwaiting(started)
+      onRefresh()
+    },
+    onError: showError
+  })
+  const update = useMutation({
+    mutationFn: async (input: { plugin: RemoteAddon; version: UnifiedModVersion }): Promise<Awaited> => {
+      const res = await window.api.updateRemoteAddon(host.id, server.id, input.plugin.file, input.version.id)
+      return { id: res.operationId, name: input.plugin.name ?? input.plugin.file, verb: 'update' }
     },
     onSuccess: (started) => {
       setAwaiting(started)
@@ -158,7 +195,7 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
     onSettled: reload
   })
 
-  const busy = working || install.isPending
+  const busy = working || install.isPending || update.isPending
   const stopped = server.status === 'stopped' || server.status === 'crashed'
   const unavailable = listError ? cleanError(listError) : null
   const installedProjects = new Set(plugins.map((p) => p.projectId).filter(Boolean))
@@ -185,8 +222,8 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
       <Stack gap="md" data-testid="remote-plugins">
         <Text size="sm" c="dimmed">
           The plugins in the plugins folder of this server on {host.name}. A plugin can be installed while the
-          server runs and is loaded the next time it starts. Removing a plugin or turning one off or on needs the
-          server to be stopped.
+          server runs and is loaded the next time it starts. Removing, updating, turning a plugin off or on needs
+          the server to be stopped.
         </Text>
 
         {unavailable !== null ? (
@@ -228,50 +265,69 @@ export function RemotePluginsModal({ host, server, onClose, onRefresh }: Props) 
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {plugins.map((plugin) => (
-                    <Table.Tr key={`${plugin.file}:${plugin.enabled}`} data-testid="remote-plugin-row">
-                      <Table.Td>
-                        <Group gap="xs">
-                          <Text size="sm" fw={600}>{plugin.name ?? plugin.file}</Text>
-                          {plugin.version && <Badge size="xs" variant="light" color="gray">{plugin.version}</Badge>}
-                          {plugin.projectId && (
-                            <Tooltip label="Installed from Modrinth by the host">
-                              <Badge size="xs" variant="light" color="green">Modrinth</Badge>
+                  {plugins.map((plugin) => {
+                    const newer = updateFor(plugin)
+                    return (
+                      <Table.Tr key={`${plugin.file}:${plugin.enabled}`} data-testid="remote-plugin-row">
+                        <Table.Td>
+                          <Group gap="xs">
+                            <Text size="sm" fw={600}>{plugin.name ?? plugin.file}</Text>
+                            {plugin.version && <Badge size="xs" variant="light" color="gray">{plugin.version}</Badge>}
+                            {plugin.projectId && (
+                              <Tooltip label="Installed from Modrinth by the host">
+                                <Badge size="xs" variant="light" color="green">Modrinth</Badge>
+                              </Tooltip>
+                            )}
+                          </Group>
+                          {plugin.name && <Text size="xs" c="dimmed">{plugin.file}</Text>}
+                          {newer && (
+                            <Tooltip label="Stop the server to update a plugin" disabled={stopped}>
+                              <Button
+                                mt={4}
+                                size="compact-xs"
+                                variant="light"
+                                leftSection={<IconArrowUp size={12} />}
+                                data-testid="remote-plugin-update"
+                                disabled={!stopped || busy}
+                                loading={update.isPending && update.variables?.plugin.file === plugin.file}
+                                onClick={() => update.mutate({ plugin, version: newer })}
+                              >
+                                Update to {newer.versionNumber}
+                              </Button>
                             </Tooltip>
                           )}
-                        </Group>
-                        {plugin.name && <Text size="xs" c="dimmed">{plugin.file}</Text>}
-                      </Table.Td>
-                      <Table.Td>{formatBytes(plugin.sizeBytes)}</Table.Td>
-                      <Table.Td>
-                        <Tooltip label="Stop the server to turn a plugin off or on" disabled={stopped}>
-                          <Box w="fit-content">
-                            <Switch
-                              aria-label={`Enable ${plugin.file}`}
-                              checked={plugin.enabled}
-                              disabled={!stopped || busy || toggle.isPending}
-                              onChange={(event) => toggle.mutate({ file: plugin.file, enabled: event.currentTarget.checked })}
-                            />
-                          </Box>
-                        </Tooltip>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group justify="flex-end">
-                          <Tooltip label={stopped ? 'Remove' : 'Stop the server to remove a plugin'}>
-                            <ActionIcon
-                              variant="light"
-                              color="red"
-                              aria-label={`Remove ${plugin.file}`}
-                              disabled={!stopped || busy || remove.isPending}
-                              onClick={() => confirmRemove(plugin)}
-                            >
-                              <IconTrash size={16} />
-                            </ActionIcon>
+                        </Table.Td>
+                        <Table.Td>{formatBytes(plugin.sizeBytes)}</Table.Td>
+                        <Table.Td>
+                          <Tooltip label="Stop the server to turn a plugin off or on" disabled={stopped}>
+                            <Box w="fit-content">
+                              <Switch
+                                aria-label={`Enable ${plugin.file}`}
+                                checked={plugin.enabled}
+                                disabled={!stopped || busy || toggle.isPending}
+                                onChange={(event) => toggle.mutate({ file: plugin.file, enabled: event.currentTarget.checked })}
+                              />
+                            </Box>
                           </Tooltip>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
+                        </Table.Td>
+                        <Table.Td>
+                          <Group justify="flex-end">
+                            <Tooltip label={stopped ? 'Remove' : 'Stop the server to remove a plugin'}>
+                              <ActionIcon
+                                variant="light"
+                                color="red"
+                                aria-label={`Remove ${plugin.file}`}
+                                disabled={!stopped || busy || remove.isPending}
+                                onClick={() => confirmRemove(plugin)}
+                              >
+                                <IconTrash size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    )
+                  })}
                 </Table.Tbody>
               </Table>
             )}

@@ -51,7 +51,7 @@ export interface RemoteServer {
 /** A backup, a restore or the installation of a plugin (msmd 0.5.0+) running on a remote host. */
 export interface RemoteOperation {
   id: string
-  kind: 'backup' | 'restore' | 'install'
+  kind: 'backup' | 'restore' | 'install' | 'update'
   /** `saving`: waiting for the running server to write the world to disk. */
   phase: 'saving' | 'copying' | 'replacing' | 'downloading'
   doneBytes: number
@@ -61,7 +61,7 @@ export interface RemoteOperation {
 /** How a backup, a restore or the installation of a plugin on a remote host ended. */
 export interface RemoteOperationResult {
   id: string
-  kind: 'backup' | 'restore' | 'install'
+  kind: 'backup' | 'restore' | 'install' | 'update'
   ok: boolean
   /** It was dropped because the server was stopped, restarted or deleted, or the daemon shut down. */
   cancelled?: boolean

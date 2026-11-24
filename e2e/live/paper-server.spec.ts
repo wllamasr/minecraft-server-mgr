@@ -590,6 +590,39 @@ test('manages the plugins of a server on a remote host', async () => {
     await api('stopRemoteServer', created.hostId, created.serverId)
     await expect.poll(async () => (await remote()).status, { timeout: 90_000, intervals: [1000] }).toBe('stopped')
 
+    // Updated: LuckPerms is put back one release older, and the window offers the
+    // newest release; the server is stopped meanwhile.
+    const addonsNow = await api<{ file: string; projectId?: string; versionId?: string }[]>(
+      'listRemoteAddons', created.hostId, created.serverId
+    )
+    const chunkyNow = addonsNow.find((a) => a.file.startsWith('LuckPerms'))
+    expect(chunkyNow?.projectId).toBeTruthy()
+    const releases = (await api<{ id: string; type: string; versionNumber: string }[]>(
+      'getModVersions', 'modrinth', chunkyNow?.projectId, MC_VERSION, 'paper'
+    )).filter((v) => v.type === 'release')
+    // (getModVersions answers newest first; the list above is its releases.)
+    expect(releases.length).toBeGreaterThan(1)
+    const olderId = releases[1].id
+    await api('removeRemoteAddon', created.hostId, created.serverId, chunkyNow?.file)
+    await api('installRemoteAddon', created.hostId, created.serverId, olderId)
+    await expect
+      .poll(async () => (await api<{ file: string; versionId?: string }[]>('listRemoteAddons', created.hostId, created.serverId))
+        .find((a) => a.file.startsWith('LuckPerms'))?.versionId, { timeout: 2 * 60_000, intervals: [2000] })
+      .toBe(olderId)
+
+    await openPlugins()
+    const chunkyRow = rows.filter({ hasText: 'LuckPerms' })
+    await expect(chunkyRow.getByTestId('remote-plugin-update')).toContainText(`Update to ${releases[0].versionNumber}`, { timeout: 30_000 })
+    await chunkyRow.getByTestId('remote-plugin-update').click()
+    await expect(page.getByText('LuckPerms updated. It loads when the server starts.', { exact: true })).toBeVisible({ timeout: 2 * 60_000 })
+    await expect
+      .poll(async () => (await api<{ file: string; versionId?: string }[]>('listRemoteAddons', created.hostId, created.serverId))
+        .find((a) => a.file.startsWith('LuckPerms'))?.versionId, { timeout: 30_000, intervals: [1000] })
+      .toBe(releases[0].id)
+    expect(jars().filter((f) => f.startsWith('LuckPerms'))).toHaveLength(1)
+    expect((await remote()).log).toMatch(/Plugin LuckPerms[^|]*updated to/)
+    await page.keyboard.press('Escape')
+
     // Removed: the jar goes, what the plugin wrote stays.
     await openPlugins()
     await expect(luckpermsRow.getByRole('button', { name: /^Remove / })).toBeEnabled({ timeout: 30_000 })

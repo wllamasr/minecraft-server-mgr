@@ -353,9 +353,12 @@ func (m *Manager) Start(id string) error {
 			break
 		}
 		if op.committed || op.ctx.Err() == nil {
-			kind := op.state.Kind
+			what := op.state.Kind
+			if what == kindUpdate {
+				what = "plugin update"
+			}
 			m.mu.Unlock()
-			return conflictError(fmt.Sprintf("A %s of this server is in progress; start it once that is done", kind))
+			return conflictError(fmt.Sprintf("A %s of this server is in progress; start it once that is done", what))
 		}
 		// Cancelled (by the stop of a restart, say) and on its way out.
 		m.mu.Unlock()

@@ -233,6 +233,7 @@ operate and debug; it is a **v2** option, not needed for the MVP.
 | `POST` | `/v1/servers/{id}/addons` | Install a Modrinth version as a plugin, by its id (`202`). |
 | `PATCH` | `/v1/servers/{id}/addons/{file}` | Turn a plugin of a stopped server off or on. |
 | `DELETE` | `/v1/servers/{id}/addons/{file}` | Remove a plugin of a stopped server. |
+| `POST` | `/v1/servers/{id}/addons/{file}/update` | Replace a plugin installed from Modrinth with another version of its project, by version id (`202`; msmd 0.6.0). The server must be stopped. |
 
 The contract lives in `daemon/api/openapi.yaml`; the manager's `RemoteProvider` is
 generated from (or validated against) it so both sides cannot drift.

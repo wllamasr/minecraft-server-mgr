@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { IconArchive, IconRestore, IconTrash } from '@tabler/icons-react'
 import type { BackupInfo, RemoteHost, RemoteOperation, RemoteOperationResult, RemoteServer } from '@shared/types'
 import { formatBytes } from '@shared/utils/format'
+import { isPluginOperation } from '@shared/utils/remote-addons'
 import { RemoteBackupSchedule } from './RemoteBackupSchedule'
 
 interface Props {
@@ -20,7 +21,7 @@ interface Props {
 }
 
 function describeOperation(op: RemoteOperation): string {
-  if (op.kind === 'install') return 'A plugin is being installed on this server…'
+  if (isPluginOperation(op.kind)) return 'A plugin is being installed or updated on this server…'
   if (op.phase === 'saving') return 'Waiting for the server to save the world…'
   if (op.phase === 'replacing') return 'Replacing the server files…'
   if (op.totalBytes <= 0) return op.kind === 'backup' ? 'Preparing the backup…' : 'Preparing the restore…'
@@ -52,7 +53,7 @@ export function RemoteBackupsModal({ host, server, zone, onClose, onRefresh }: P
 
   const operation = server.operation ?? null
   // How the installation of a plugin ended is told where plugins are managed.
-  const last = server.lastOperation && server.lastOperation.kind !== 'install' ? server.lastOperation : null
+  const last = server.lastOperation && !isPluginOperation(server.lastOperation.kind) ? server.lastOperation : null
   const working = operation !== null || awaiting !== null
 
   // The server list is polled every few seconds; follow an operation closer.
