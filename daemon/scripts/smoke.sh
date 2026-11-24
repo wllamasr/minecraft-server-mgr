@@ -179,6 +179,44 @@ if [ -n "${MSMD_SMOKE_LIVE:-}" ]; then
   expect_status 202 "start the server" POST "/v1/servers/$SID/start" -H "$AUTH"
   wait_log "Done (" 360
   echo "ok   Paper finished booting"
+
+  # Metrics of the real server. The first request makes the daemon ask the
+  # server for its tick time and its players; the numbers follow.
+  METRICS=""
+  waited=0
+  while [ "$waited" -lt 40 ]; do
+    METRICS="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$SID/metrics")"
+    case "$METRICS" in
+      *'"tick":{'*'"p95Ms":'*'"players":{'*) break ;;
+      *'"players":{'*'"tick":{'*'"p95Ms":'*) break ;;
+    esac
+    waited=$((waited + 2))
+    sleep 2
+  done
+  expect_contains "metrics report the tick time" '"averageMs":' "$METRICS"
+  expect_contains "the tick target is the server's" '"targetMs":50' "$METRICS"
+  expect_contains "metrics report the players" '"online":0,"max":20' "$METRICS"
+  case "$(uname -s)" in
+    Linux*)
+      expect_contains "metrics report the memory" '"memory":' "$METRICS"
+      # The heap is reserved up front (1G): what is measured is the JVM.
+      MEM="$(printf '%s' "$METRICS" | grep -o '"memory":[0-9]*' | grep -o '[0-9]*$')"
+      [ "${MEM:-0}" -gt 300000000 ] || fail "the server's memory is implausibly small: $METRICS"
+      echo "ok   the memory is the JVM's ($MEM bytes)"
+      expect_contains "metrics report the processor" '"cpu":' "$(sleep 2; curl -sk -H "$AUTH" "$BASE/v1/servers/$SID/metrics")"
+      ;;
+  esac
+  # The daemon's own questions stay out of the console; the server did log them.
+  LOGS="$(curl -sk -H "$AUTH" "$BASE/v1/servers/$SID/logs")"
+  case "$LOGS" in
+    *"Average time per tick"*) fail "the daemon's tick query shows in the console: $LOGS" ;;
+    *) echo "ok   the tick query stays out of the console" ;;
+  esac
+  # The player count must not cost a line in the server's log.
+  case "$LOGS" in
+    *"127.0.0.1"*"ping"* | *"Disconnecting"* | *"lost connection"*) fail "the player count shows in the server log: $LOGS" ;;
+    *) echo "ok   the player count leaves no trace in the server log" ;;
+  esac
   expect_status 202 "stop the server" POST "/v1/servers/$SID/stop" -H "$AUTH"
   waited=0
   until curl -sk -H "$AUTH" "$BASE/v1/servers/$SID" | grep -q '"status":"stopped"'; do

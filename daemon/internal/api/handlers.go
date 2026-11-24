@@ -246,6 +246,17 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// handleMetrics reports what a running server is doing. Asking is what makes
+// the daemon ask the server for its tick time (see Manager.Metrics).
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	metrics, err := s.mgr.Metrics(r.PathValue("id"))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, metrics)
+}
+
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.mgr.Hub().Buffer(r.PathValue("id")))
 }

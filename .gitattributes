@@ -7,3 +7,8 @@
 *.yml     text eol=lf
 *.mod     text eol=lf
 Makefile  text eol=lf
+
+# Captured server output, read by tests byte for byte (the daemon's copy must
+# equal the app's): never converted.
+src/shared/utils/__fixtures__/*.txt   -text
+daemon/internal/tick/testdata/*.txt   -text

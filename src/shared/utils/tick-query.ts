@@ -83,10 +83,13 @@ export function isServerReadyLine(line: string): boolean {
   return message !== null && /^Done \(\d/.test(message)
 }
 
-const NUMBER = '(\\d+(?:[.,]\\d+)?)'
+// Of a length a tick time can have: a number of hundreds of digits is not one.
+const NUMBER = '(\\d{1,9}(?:[.,]\\d{1,9})?)'
 const RATE = new RegExp(`^Target tick rate: ${NUMBER} per second( \\(ignored, reference only\\))?\\.?$`)
 const AVERAGE = new RegExp(`^Average time per tick: ${NUMBER}ms(?: \\(Target: ${NUMBER}ms\\))?$`)
-const STATUS = /^The game is (running normally|sprinting|frozen)\b/
+// "running normally", "running, but can't keep up with the target tick
+// rate", "sprinting", "frozen".
+const STATUS = /^The game is (running|sprinting|frozen)\b/
 const PERCENTILES = new RegExp(`^Percentiles: P50: ${NUMBER}ms P95: ${NUMBER}ms P99: ${NUMBER}ms[.,] sample: (\\d+)$`, 'i')
 
 export interface TickQueryLine {

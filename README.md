@@ -26,7 +26,7 @@ from a single window. No batch scripts, no manual EULA edits.
   **CurseForge** (plugins from Modrinth only), toggle them on/off, and remove them.
 - **Live console** — real-time log streaming with command input, straight to the server's stdin.
 - **Telemetry** — per-server CPU, memory, players online and tick time (Minecraft 1.20.3+) while
-  it runs.
+  it runs, for local servers and for servers on remote hosts.
 - **Smart Java detection** — scans `JAVA_HOME`, `PATH`, and common install locations and
   picks the best JDK for the target Minecraft version (Java 8 / 17 / 21 / 25).
 - **`server.properties` editor** — edit settings through the UI; comments in the file are

@@ -133,6 +133,7 @@ calls use the server's `plugins/` folder, and only `modrinth` is accepted.
 | `deleteRemoteServer(hostId, serverId)`               | `hosts:delete-server`      | `{ hostId, serverId }`           | `void`                   |
 | `sendRemoteCommand(hostId, serverId, command)`       | `hosts:command`            | `{ hostId, serverId, command }`  | `void`                   |
 | `remoteServerLogs(hostId, serverId)`                 | `hosts:logs`               | `{ hostId, serverId }`           | `ServerLogEntry[]`       |
+| `remoteServerMetrics(hostId, serverId)`              | `hosts:metrics`            | `{ hostId, serverId }`           | `RemoteServerMetrics \| null` |
 | `remoteLoaderVersions(hostId, loader, mcVersion)`    | `hosts:loader-versions`    | `{ hostId, loader, mcVersion }`  | `{ version, stable }[]`  |
 | `remoteSoftwareVersions(hostId, platform)`           | `hosts:software-versions`  | `{ hostId, platform }`           | `string[]`               |
 | `listRemoteBackups(hostId, serverId)`                | `hosts:backups`            | `{ hostId, serverId }`           | `BackupInfo[]`           |
@@ -169,6 +170,11 @@ clock; `restartSchedule` goes through the same call), and `RemoteServer` carries
 with msmd older than 0.3.0 refuses these settings with the "older msmd" message. `backupId` must look like a backup id
 (`YYYYMMDD-HHMMSS-manual|pre-restore|scheduled`), anything else is rejected before a request is
 made.
+
+`remoteServerMetrics` resolves to `null` when the host's msmd has no metrics (older than 0.4.0)
+and rejects when the server is not running. Every value in `RemoteServerMetrics`
+([`server-metrics.ts`](../src/shared/utils/server-metrics.ts)) but `at` (the host's clock) is
+optional. Calling it is what makes the host ask the server for its tick time.
 
 ## App & window
 

@@ -7,7 +7,7 @@ import {
   IconServer, IconPlus, IconTrash, IconPlayerPlay, IconPlayerStop,
   IconTerminal2, IconRefresh, IconPlugConnected, IconDownload, IconClock, IconArchive
 } from '@tabler/icons-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
@@ -16,6 +16,7 @@ import { isValidRestartSchedule } from '@shared/utils/restart-schedule'
 import { engineLabel, isPluginPlatform } from '@shared/constants'
 import { modals } from '@mantine/modals'
 import { RemoteBackupsModal } from '../../components/hosts/RemoteBackupsModal'
+import { RemoteServerMetricsLine } from '../../components/hosts/RemoteServerMetricsLine'
 
 export const Route = createFileRoute('/hosts/')({
   component: HostsPage
@@ -116,7 +117,7 @@ function HostsPage() {
 
         <Box style={{ flex: 1, minWidth: 0 }}>
           {selected ? (
-            <HostDetail host={selected} />
+            <HostDetail key={selected.id} host={selected} />
           ) : hosts.length > 0 ? (
             <Card p={40} bg="dark.6" radius="md" ta="center">
               <Text c="dark.2">Select a host to manage its servers.</Text>
@@ -188,6 +189,10 @@ function HostDetail({ host }: { host: RemoteHost }) {
   const [consoleServer, setConsoleServer] = useState<RemoteServer | null>(null)
   const [scheduleServer, setScheduleServer] = useState<RemoteServer | null>(null)
   const [backupsServerId, setBackupsServerId] = useState<string | null>(null)
+  // A host with an msmd that has no metrics is asked once, not every few
+  // seconds. (HostDetail is keyed by host: this is not carried to another.)
+  const [noMetrics, setNoMetrics] = useState(false)
+  const metricsUnsupported = useCallback(() => setNoMetrics(true), [])
 
   const { data: info } = useQuery({
     queryKey: ['host-info', host.id],
@@ -284,6 +289,9 @@ function HostDetail({ host }: { host: RemoteHost }) {
                   {s.backupSchedule ? ` · backed up daily at ${s.backupSchedule}` : ''}
                   {s.operation ? ` · ${s.operation.kind === 'backup' ? 'backing up' : 'restoring a backup'}…` : ''}
                 </Text>
+                {s.status === 'running' && !noMetrics && (
+                  <RemoteServerMetricsLine hostId={host.id} serverId={s.id} onUnsupported={metricsUnsupported} />
+                )}
               </Box>
               <Badge size="sm" variant="light" color={statusColor(s.status).split('.')[0]}>{s.status}</Badge>
             </Group>

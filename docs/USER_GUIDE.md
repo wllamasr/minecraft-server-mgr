@@ -298,7 +298,20 @@ which tells you about spikes the average hides.
   panel shows a dash and says why.
 - MSM asks the server every 15 seconds, and only while that server's page is open. Each question
   leaves four lines in the server's `logs/latest.log`; they are kept out of the console in MSM.
-- Servers on remote hosts do not show metrics yet.
+
+**Servers on remote hosts** show the same numbers in one line under their name on the **Remote
+Hosts** page while they run: `Players 3/20 · Tick 12.5 ms / 50 ms · 20.0 TPS · P95 20.5 ms ·
+CPU 140% · RAM 2.10 GB`.
+
+- They are measured by the host and asked for every 5 seconds while that host is on screen.
+  CPU is in percent of one core (140% is one core and a half), and CPU and RAM cover the server
+  with everything it started.
+- A dash means the host could not measure that value: the tick time on Minecraft older than
+  1.20.3, the players when the server's status is turned off (`enable-status=false`), CPU and RAM
+  on a host that is neither Linux nor Windows.
+- While a host is on screen, each of its running servers is asked for its tick time every 15
+  seconds, with the same four lines in its `logs/latest.log`.
+- The host needs `msmd` 0.4.0 or newer; with an older one the line is not shown.
 
 ## 10. Java
 

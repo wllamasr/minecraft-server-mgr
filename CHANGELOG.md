@@ -23,7 +23,23 @@ All notable changes to this project are documented here. The format follows
   - The answers to the app's questions are not shown in the app's console; they do appear in the
     server's own `logs/latest.log` (four lines per question). An answer to a `tick query` you
     type yourself is shown as usual.
-  - Servers on remote hosts do not report metrics yet.
+- **Metrics for servers on remote hosts**: on the Remote Hosts page every running server shows
+  its players online, tick time, processor and memory use, measured by the host.
+  - The numbers are asked of the host every 5 seconds while the host is on screen. What the
+    host could not measure shows as a dash, never as zero.
+  - Tick time follows the rules of local servers (Minecraft 1.20.3+, `tick query`, sprinting and
+    frozen games). The host asks a server at most every 15 seconds and only when it is asked for
+    that server's metrics, so nothing is asked while nobody looks. With a host on screen, each of
+    its running servers gets four lines in its `logs/latest.log` per question; the answers are
+    kept out of the console.
+  - Players come from the server's own status (the server list ping), asked on the host itself.
+    A server with `enable-status=false`, or bound to an address other than the host's loopback,
+    shows a dash.
+  - Processor and memory are those of the server process with everything it started (the JVM
+    behind `run.sh` or `run.bat`), on hosts running Linux or Windows; other systems show a dash.
+    Processor use is in percent of one core, as for local servers.
+  - The host needs `msmd` 0.4.0 or newer; with an older one no metrics are shown.
+- `msmd` 0.4.0: `GET /v1/servers/{id}/metrics`.
 - **Backups** for local servers: a new **Backups** tab on the server page with **Back up now**,
   the list of backups, **Restore** and **Delete**.
   - A backup is a standard zip of the server folder (world, settings, mods or plugins, the server

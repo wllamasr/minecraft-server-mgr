@@ -85,6 +85,7 @@ describe('reading a real server that sprints, is frozen and changes its tick rat
     const { hidden } = read(lines)
     const other = hidden.filter((line) => !/Target tick rate|Average time per tick|Percentiles/.test(line))
     expect(other.every((line) => /: The game is (running normally|sprinting|frozen)$/.test(line))).toBe(true)
+    expect(other.length).toBeGreaterThan(0)
     expect(hidden.some((line) => /Sprint completed|Stepping|Set the target/.test(line))).toBe(false)
   })
 })
@@ -149,6 +150,23 @@ describe('createTickQueryReader', () => {
     const { samples, hidden } = read(fakes)
     expect(samples).toEqual([])
     expect(hidden).toEqual([rate])
+  })
+
+  it('reads the answer of a server that cannot keep up', () => {
+    // Wording from the game's language file; not captured from a server.
+    const { samples, hidden } = read([
+      "[12:00:00] [Server thread/INFO]: The game is running, but can't keep up with the target tick rate",
+      rate,
+      average,
+      percentiles
+    ])
+    expect(hidden).toHaveLength(4)
+    expect(samples[1]).toMatchObject({ mode: 'normal', averageMs: 62.5, tps: 16 })
+  })
+
+  it('takes no number of an absurd length', () => {
+    const { samples } = read([rate, `Average time per tick: ${'9'.repeat(400)}ms (Target: 50.0ms)`])
+    expect(samples).toEqual([])
   })
 
   it('starts over when a new answer begins inside an unfinished one', () => {

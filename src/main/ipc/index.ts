@@ -143,6 +143,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('hosts:command', (_e, { hostId, serverId, command }) =>
     hostsManager.sendRemoteCommand(hostId, serverId, command)
   )
+  ipcMain.handle('hosts:metrics', (_e, { hostId, serverId }) =>
+    hostsManager.remoteServerMetrics(hostId, serverId)
+  )
   ipcMain.handle('hosts:logs', (_e, { hostId, serverId }) =>
     hostsManager.remoteServerLogs(hostId, serverId)
   )

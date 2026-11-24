@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: msmd — Minecraft Server Manager daemon
-  version: 0.3.0
+  version: 0.4.0
   description: >
     HTTP + Server-Sent-Events API for managing Minecraft servers on a remote
     host. All endpoints are served over TLS. Every route except /v1/health and
@@ -279,6 +279,53 @@ paths:
           application/json:
             schema: { type: object, properties: { command: { type: string } } }
       responses: { "200": { description: OK } }
+  /v1/servers/{id}/metrics:
+    get:
+      summary: What a running server is doing
+      description: >
+        Players online, tick time, processor and memory use. Every measurement is optional: one
+        that could not be taken is absent, never zero. Requesting this is what makes the daemon
+        ask the server for its tick time ("tick query", at most every 15 seconds, Minecraft
+        1.20.3+); the answers to those questions are kept out of the console. Since 0.4.0.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [serverId, at]
+                properties:
+                  serverId: { type: string }
+                  at: { type: integer, description: "The host's clock, epoch milliseconds. Ages are to be judged against it." }
+                  cpu: { type: number, description: "Percent of one core (200 = two cores busy), of the server and everything it started. Absent on the first request and where the host cannot be asked (neither Linux nor Windows)." }
+                  memory: { type: integer, description: Physical memory in use, bytes. }
+                  players:
+                    type: object
+                    properties:
+                      online: { type: integer }
+                      max: { type: integer }
+                      at: { type: integer, description: When the server said so, epoch milliseconds. }
+                  tick:
+                    type: object
+                    description: The server's last answer to "tick query".
+                    properties:
+                      averageMs: { type: number }
+                      targetMs: { type: number }
+                      targetRate: { type: number }
+                      tps: { type: number, description: Never more than targetRate. Absent while sprinting. }
+                      mode: { type: string, enum: [normal, sprinting, frozen] }
+                      p50Ms: { type: number }
+                      p95Ms: { type: number }
+                      p99Ms: { type: number }
+                      sampleSize: { type: integer }
+                      at: { type: integer, description: When the answer came, epoch milliseconds. }
+                  tickStatus:
+                    type: string
+                    enum: [unsupported, unavailable]
+                    description: Why there is no tick time and none will come (Minecraft before 1.20.3; the server does not answer the command).
+        "404": { description: Unknown server }
+        "409": { description: The server is not running }
   /v1/servers/{id}/logs:
     get: { summary: Buffered log history, responses: { "200": { description: OK } } }
   /v1/servers/{id}/console:

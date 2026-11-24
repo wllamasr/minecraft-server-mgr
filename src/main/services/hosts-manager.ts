@@ -8,6 +8,7 @@ import {
   plainDaemonMessage,
   plainSettingsMessage
 } from '../../shared/utils/daemon-errors'
+import { readRemoteMetrics, type RemoteServerMetrics } from '../../shared/utils/server-metrics'
 import { safeStorage } from 'electron'
 import { v4 as uuid } from 'uuid'
 import { eq } from 'drizzle-orm'
@@ -191,6 +192,27 @@ export function sendRemoteCommand(hostId: string, serverId: string, command: str
   return remoteRequest(connFor(hostId), 'POST', `/v1/servers/${serverId}/command`, { command }).then(
     () => undefined
   )
+}
+
+/**
+ * What a running server on a host is doing. Resolves to null when the host
+ * has no metrics to give (an msmd from before 0.4.0), so that the caller can
+ * stop asking; fails when the server is not running or the host cannot be
+ * reached. Asking is what makes the host ask the server for its tick time.
+ */
+export async function remoteServerMetrics(hostId: string, serverId: string): Promise<RemoteServerMetrics | null> {
+  if (typeof serverId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(serverId)) throw new Error('Invalid server id')
+  let raw: unknown
+  try {
+    raw = await remoteRequest<unknown>(connFor(hostId), 'GET', `/v1/servers/${serverId}/metrics`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (isOlderDaemonError(message)) return null
+    throw new Error(plainDaemonMessage(message))
+  }
+  const metrics = readRemoteMetrics(raw)
+  if (!metrics) throw new Error('The host did not answer with metrics')
+  return metrics
 }
 
 export function remoteServerLogs(hostId: string, serverId: string): Promise<unknown[]> {

@@ -87,6 +87,8 @@ type runningServer struct {
 	status   Status
 	stopping bool
 	exited   chan struct{}
+	// metrics is what is known about this run (see metrics.go).
+	metrics *metricsState
 }
 
 // Manager owns all servers and their processes.
@@ -423,7 +425,7 @@ func (m *Manager) launch(id string, s store.Server, cmd *exec.Cmd) error {
 		return err
 	}
 
-	rs := &runningServer{cmd: cmd, stdin: stdin, status: StatusRunning, exited: make(chan struct{})}
+	rs := &runningServer{cmd: cmd, stdin: stdin, status: StatusRunning, exited: make(chan struct{}), metrics: newMetricsState(s)}
 	m.mu.Lock()
 	if m.shuttingDown || m.deleting[id] || m.running[id] != nil || m.ops[id] != nil {
 		// Lost a race with a shutdown, a delete, another start of this server,
@@ -445,8 +447,8 @@ func (m *Manager) launch(id string, s store.Server, cmd *exec.Cmd) error {
 	m.running[id] = rs
 	m.mu.Unlock()
 
-	go m.stream(id, stdout, false)
-	go m.stream(id, stderr, true)
+	go m.stream(id, rs, stdout, false)
+	go m.stream(id, rs, stderr, true)
 	m.broadcast(id, StatusRunning)
 	go m.waitExit(id, rs, s)
 
@@ -956,7 +958,7 @@ func (m *Manager) SendCommand(id, command string) error {
 
 // ─── internals ─────────────────────────────────────────────
 
-func (m *Manager) stream(id string, r io.Reader, isErr bool) {
+func (m *Manager) stream(id string, rs *runningServer, r io.Reader, isErr bool) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -965,7 +967,12 @@ func (m *Manager) stream(id string, r io.Reader, isErr bool) {
 		if isErr && level == "" {
 			level = "ERROR"
 		}
-		m.hub.PushLog(id, line, level)
+		// The answer to a question the daemon asked by itself (see metrics.go)
+		// is not console output anybody asked to see. The watchers are told
+		// about every line all the same.
+		if isErr || !m.observeLine(rs, line) {
+			m.hub.PushLog(id, line, level)
+		}
 		if !isErr {
 			m.notifyWatchers(id, line)
 		}

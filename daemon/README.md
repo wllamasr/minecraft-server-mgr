@@ -32,6 +32,14 @@ on the host:
   rolled back. Both calls return at once; the server object shows the `operation` in flight and
   the `lastOperation`. Stop, restart, delete and daemon shutdown cancel a backup; a restore that
   is already replacing files is finished first. Deleting a server deletes its backups.
+- **Metrics.** `GET /v1/servers/{id}/metrics` reports what a running server is doing: players
+  online (a server list ping on `127.0.0.1`), tick time (the server's answer to `tick query`,
+  Minecraft 1.20.3+), and the processor and memory use of the server process with everything it
+  started (Linux: its process group, from `/proc`; Windows: its descendants; elsewhere absent).
+  Every value is optional and carries the host's clock. Nothing is measured on a timer: the
+  server is sent `tick query` at most every 15 seconds and only when its metrics are requested
+  (each question leaves four lines in the server's `logs/latest.log`; the answers to msmd's own
+  questions are kept out of `/logs` and `/console`). `409` when the server is not running.
 - **Scheduled backups.** `PATCH /v1/servers/{id}` with `backupSchedule` (`HH:MM` on the host's
   clock) backs the server up every day, running or stopped, and `backupKeep` (1 to 365, default
   7) says how many of these to keep: after each one the older *scheduled* backups are deleted,
@@ -60,7 +68,7 @@ on the host:
 - **Security.** TLS with a self-signed cert (pinned by the manager, TOFU) and
   **bearer-token** auth. Get/rotate the token with `msmd auth`.
 
-**Not yet** (see the RFC): telemetry, CurseForge modpacks, mutual TLS. The
+**Not yet** (see the RFC): CurseForge modpacks, mutual TLS, mod and plugin management. The
 desktop manager's remote-host UI is landing separately (Phase A/C).
 
 ## Build & run

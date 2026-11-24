@@ -59,6 +59,15 @@ func runFakeMinecraft() {
 			}
 		case "save-on":
 			say("Automatic saving is now enabled")
+		case "tick query":
+			if os.Getenv(fakeTickEnv) == "mute" {
+				say("Unknown or incomplete command, see below for error")
+				break
+			}
+			say("The game is running normally")
+			// One message of two lines: the second has no prefix.
+			say("Target tick rate: 20.0 per second.\nAverage time per tick: 12.5ms (Target: 50.0ms)")
+			say("Percentiles: P50: 11.0ms P95: 20.5ms P99: 30.0ms. Sample: 100")
 		case "stop":
 			say("Stopping the server")
 			os.Exit(0)

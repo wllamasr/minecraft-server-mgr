@@ -241,6 +241,20 @@ control.
   - Without a recent answer (45 seconds) no value is shown; an unsupported version and a server
     that does not answer are told apart.
   - The answer to a question of the app is not shown in the app's console; any other answer is.
+- **FR-24b** A running server on a remote host reports, on request, its players online, tick
+  time, processor use and memory use, each optional: a value that could not be measured is
+  absent, never zero.
+  - The daemon measures on request only. A server is sent `tick query` at most every 15 seconds
+    and only when its metrics are requested, under the conditions of FR-24a; the answers to the
+    daemon's own questions are kept out of the console it serves.
+  - Players are read with a server list ping on the host's loopback, off the request path, and
+    dropped when the server does not answer.
+  - Processor (percent of one core, between two requests at least a second apart) and memory
+    cover the server's process tree, on Linux and Windows hosts.
+  - The report carries the host's clock; the app judges the age of a value against it, not
+    against its own clock, and takes only values of the expected kind from the host.
+  - The app requests the metrics of the running servers of the host on screen every 5 seconds,
+    and stops asking a host whose daemon has no such route.
 
 ### 4.7 Application
 

@@ -138,6 +138,12 @@ const api = {
     ipcRenderer.invoke('hosts:delete-server', { hostId, serverId }),
   sendRemoteCommand: (hostId: string, serverId: string, command: string): Promise<void> =>
     ipcRenderer.invoke('hosts:command', { hostId, serverId, command }),
+  /** null: the host has no metrics to give (an older msmd). */
+  remoteServerMetrics: (
+    hostId: string,
+    serverId: string
+  ): Promise<import('../shared/utils/server-metrics').RemoteServerMetrics | null> =>
+    ipcRenderer.invoke('hosts:metrics', { hostId, serverId }),
   remoteServerLogs: (hostId: string, serverId: string): Promise<ServerLogEntry[]> =>
     ipcRenderer.invoke('hosts:logs', { hostId, serverId }),
   remoteLoaderVersions: (

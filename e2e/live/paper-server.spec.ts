@@ -329,6 +329,36 @@ test('deploys a Paper server to a remote host', async () => {
       .poll(async () => ((await remote()).log.match(/Done \(\d/g) ?? []).length, { timeout: 6 * 60_000, intervals: [2000] })
       .toBe(2)
 
+    // Metrics: with the host on screen, the running server shows its players,
+    // tick time, processor and memory, all measured by the host.
+    await page.getByText('Remote Hosts', { exact: true }).first().click()
+    await page.getByText('Live host', { exact: true }).first().click()
+    const metrics = page.getByTestId(`remote-metrics-${created.serverId}`)
+    await expect(metrics).toBeVisible({ timeout: 30_000 })
+    await expect(metrics.getByTestId('remote-tick')).toHaveAttribute('data-state', 'ok', { timeout: 40_000 })
+    await expect(metrics.getByTestId('remote-tick')).toHaveText(/^Tick \d+\.\d ms \/ 50 ms · \d+\.\d TPS · P95 \d+\.\d ms$/)
+    await expect(metrics.getByTestId('remote-players')).toHaveText('Players 0/20', { timeout: 30_000 })
+    if (process.platform === 'win32' || process.platform === 'linux') {
+      await expect(metrics.getByTestId('remote-cpu')).toHaveText(/^CPU \d+%$/, { timeout: 30_000 })
+      // The whole heap is reserved up front (1G at least): the JVM, not a wrapper, is what is measured.
+      await expect(metrics.getByTestId('remote-memory')).toHaveText(/^RAM (0\.[3-9]\d|[1-9]\d*\.\d\d) GB$/)
+    }
+    // The host asked the server (msmd runs on this machine: its log is at
+    // hand), and kept the answers to its own questions out of the console.
+    const remoteLatestLog = join(created.server.dir as string, 'logs', 'latest.log')
+    const remoteAnswers = (): number => (readFileSync(remoteLatestLog, 'utf8').match(/Target tick rate:/g) ?? []).length
+    expect(remoteAnswers()).toBeGreaterThan(0)
+    expect((await remote()).log).not.toMatch(/Average time per tick|Target tick rate/)
+    // Nobody looking, nobody asking.
+    await page.evaluate(() => {
+      window.location.hash = '#/'
+    })
+    await expect(metrics).toHaveCount(0)
+    await page.waitForTimeout(8_000) // a request already on its way
+    const remoteWhileAway = remoteAnswers()
+    await page.waitForTimeout(40_000)
+    expect(remoteAnswers()).toBe(remoteWhileAway)
+
     // Backups, through the window on the hosts page. First of the running
     // server: the host pauses world saving for the copy.
     await page.getByText('Remote Hosts', { exact: true }).first().click()

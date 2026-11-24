@@ -95,6 +95,21 @@ func TestListWithToken(t *testing.T) {
 	}
 }
 
+func TestMetricsRoute(t *testing.T) {
+	ts := newTestServer(t)
+	defer ts.Close()
+
+	if resp, _ := get(t, ts.URL+"/v1/servers/nope/metrics", ""); resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("without a token: %d", resp.StatusCode)
+	}
+	// An unknown server is "server not found" in JSON: a client can tell it
+	// from a daemon that has no such route (a plain-text 404).
+	resp, body := get(t, ts.URL+"/v1/servers/nope/metrics", testToken)
+	if resp.StatusCode != http.StatusNotFound || !strings.Contains(body, `"error":"server not found"`) {
+		t.Errorf("unknown server: %d %s", resp.StatusCode, body)
+	}
+}
+
 func TestInfoReportsAgentVersion(t *testing.T) {
 	ts := newTestServer(t)
 	defer ts.Close()
